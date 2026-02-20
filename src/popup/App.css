@@ -274,7 +274,7 @@ body {
 /* Save Form */
 .save-form {
   padding: 16px;
-  max-height: calc(600px - 60px);
+  max-height: calc(820px - 60px);
   overflow-y: auto;
   display: flex;
   flex-direction: column;
@@ -293,8 +293,8 @@ body {
 }
 
 .live-editor-textarea {
-  min-height: 200px;
-  max-height: 320px;
+  min-height: 300px;
+  max-height: 520px;
   overflow: auto;
   resize: vertical;
   border: 1px solid var(--border-color);
@@ -314,8 +314,8 @@ body {
 }
 
 .live-editor-preview {
-  min-height: 200px;
-  max-height: 320px;
+  min-height: 300px;
+  max-height: 520px;
   overflow: auto;
   border: 1px solid var(--border-color);
   border-radius: 4px;

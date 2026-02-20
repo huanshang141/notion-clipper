@@ -4,6 +4,7 @@
  */
 
 import requestService from '../utils/request';
+import { marked } from 'marked';
 import StorageService from './storage';
 import {
   NotionDatabase,
@@ -315,66 +316,8 @@ class NotionService {
       }
 
       // Build page content (children blocks)
-      const contentBlocks = this.buildContentBlocksFromMarkdown(article.content || '');
+      const contentBlocks = this.buildContentBlocksFromMarkdown(article.content || '', imagesData);
       const children: any[] = [...contentBlocks];
-
-      // Add images as separate blocks
-      if (article.images && article.images.length > 0) {
-        const imageLimit = 10;
-        for (let i = 0; i < Math.min(article.images.length, imageLimit); i++) {
-          const img = article.images[i];
-          if (img && img.src) {
-            // Use uploaded URL or ID if available, otherwise use original
-            const imageRef = imagesData?.[img.src] || img.src;
-            
-            // Check if it's a UUID (File Upload ID)
-            const isUuid = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(imageRef);
-            
-            if (isUuid) {
-              children.push({
-                object: 'block',
-                type: 'image',
-                image: {
-                  type: 'file_upload',
-                  file_upload: {
-                    id: imageRef,
-                  },
-                },
-              });
-            } else {
-              // Determine if URL is data URI (for embedded images)
-              // Note: Notion external images must be URLs
-              if (imageRef.startsWith('data:')) {
-                // If we still have a data URI here, it means upload failed or wasn't attempted.
-                // We skip huge data URIs to avoid error
-                if (imageRef.length > 2000) {
-                   console.warn(`[NotionService] Data URI image too long (${imageRef.length}). Skipping.`);
-                   continue;
-                }
-                // Try to use it anyway if short enough? Notion might block data URIs in external block.
-                // Best to skip or warn.
-              }
-              
-              // Validate URL length (Notion API limit is 2000 characters)
-              if (imageRef.length > 2000) {
-                console.warn(`[NotionService] Image URL too long (${imageRef.length} chars). Skipping image.`);
-                continue;
-              }
-
-              children.push({
-                object: 'block',
-                type: 'image',
-                image: {
-                  type: 'external',
-                  external: {
-                    url: imageRef,
-                  },
-                },
-              });
-            }
-          }
-        }
-      }
 
       // Prepare Icon and Cover
       let icon: any = undefined;
@@ -476,118 +419,131 @@ class NotionService {
     return propertyValueKeys.some((key) => key in value);
   }
 
-  private buildContentBlocksFromMarkdown(markdown: string): any[] {
+  private buildContentBlocksFromMarkdown(markdown: string, imagesData?: Record<string, string>): any[] {
     if (!markdown || !markdown.trim()) {
       return [];
     }
 
-    const blocks: any[] = [];
-    const lines = markdown.split('\n');
-    let paragraphBuffer: string[] = [];
-
-    const flushParagraph = () => {
-      const paragraphText = paragraphBuffer.join(' ').trim();
-      paragraphBuffer = [];
-
-      if (!paragraphText) {
-        return;
-      }
-
-      this.splitTextByLimit(paragraphText, 2000).forEach((chunk) => {
-        blocks.push({
-          object: 'block',
-          type: 'paragraph',
-          paragraph: {
-            rich_text: [
-              {
-                type: 'text',
-                text: { content: chunk },
-              },
-            ],
-          },
-        });
-      });
-    };
-
-    lines.forEach((rawLine) => {
-      const line = rawLine.trim();
-
-      if (!line) {
-        flushParagraph();
-        return;
-      }
-
-      const headingMatch = line.match(/^(#{1,3})\s+(.+)$/);
-      if (headingMatch) {
-        flushParagraph();
-        const level = headingMatch[1].length;
-        const text = headingMatch[2].trim();
-        const type = `heading_${level}`;
-
-        this.splitTextByLimit(text, 2000).forEach((chunk) => {
-          blocks.push({
-            object: 'block',
-            type,
-            [type]: {
-              rich_text: [
-                {
-                  type: 'text',
-                  text: { content: chunk },
-                },
-              ],
-            },
-          });
-        });
-        return;
-      }
-
-      const bulletedMatch = line.match(/^[-*]\s+(.+)$/);
-      if (bulletedMatch) {
-        flushParagraph();
-        const text = bulletedMatch[1].trim();
-        this.splitTextByLimit(text, 2000).forEach((chunk) => {
-          blocks.push({
-            object: 'block',
-            type: 'bulleted_list_item',
-            bulleted_list_item: {
-              rich_text: [
-                {
-                  type: 'text',
-                  text: { content: chunk },
-                },
-              ],
-            },
-          });
-        });
-        return;
-      }
-
-      const numberedMatch = line.match(/^\d+\.\s+(.+)$/);
-      if (numberedMatch) {
-        flushParagraph();
-        const text = numberedMatch[1].trim();
-        this.splitTextByLimit(text, 2000).forEach((chunk) => {
-          blocks.push({
-            object: 'block',
-            type: 'numbered_list_item',
-            numbered_list_item: {
-              rich_text: [
-                {
-                  type: 'text',
-                  text: { content: chunk },
-                },
-              ],
-            },
-          });
-        });
-        return;
-      }
-
-      paragraphBuffer.push(line);
+    const tokens = marked.lexer(markdown, {
+      gfm: true,
+      breaks: true,
     });
 
-    flushParagraph();
+    const blocks: any[] = [];
+    tokens.forEach((token: any) => {
+      if (token.type === 'heading') {
+        const level = Math.min(Math.max(Number(token.depth || 1), 1), 3);
+        const type = `heading_${level}`;
+        const text = this.toPlainText(token.text || token.raw || '');
+        this.pushTextBlocks(blocks, type, type, text);
+        return;
+      }
+
+      if (token.type === 'paragraph') {
+        const inlineTokens: any[] = Array.isArray(token.tokens) ? token.tokens : [];
+        const imageTokens = inlineTokens.filter((t) => t.type === 'image');
+        const text = this.toPlainText(token.text || token.raw || '');
+
+        if (text) {
+          this.pushTextBlocks(blocks, 'paragraph', 'paragraph', text);
+        }
+
+        imageTokens.forEach((imageToken) => {
+          const originalUrl = (imageToken.href || '').trim();
+          const imageRef = imagesData?.[originalUrl] || originalUrl;
+          const imageBlock = this.buildImageBlock(imageRef, this.toPlainText(imageToken.text || ''));
+          if (imageBlock) {
+            blocks.push(imageBlock);
+          }
+        });
+        return;
+      }
+
+      if (token.type === 'image') {
+        const originalUrl = (token.href || '').trim();
+        const imageRef = imagesData?.[originalUrl] || originalUrl;
+        const imageBlock = this.buildImageBlock(imageRef, this.toPlainText(token.text || ''));
+        if (imageBlock) {
+          blocks.push(imageBlock);
+        }
+        return;
+      }
+
+      if (token.type === 'list') {
+        const listType = token.ordered ? 'numbered_list_item' : 'bulleted_list_item';
+        const items: any[] = Array.isArray(token.items) ? token.items : [];
+        items.forEach((item) => {
+          const text = this.toPlainText(item.text || item.raw || '');
+          this.pushTextBlocks(blocks, listType, listType, text);
+        });
+        return;
+      }
+
+      if (token.type === 'code') {
+        const codeText = token.text || '';
+        this.splitTextByLimit(codeText, 2000).forEach((chunk) => {
+          blocks.push({
+            object: 'block',
+            type: 'code',
+            code: {
+              language: (token.lang || 'plain text').substring(0, 20),
+              rich_text: [
+                {
+                  type: 'text',
+                  text: { content: chunk },
+                },
+              ],
+            },
+          });
+        });
+        return;
+      }
+
+      if (token.type === 'blockquote') {
+        const text = this.toPlainText(token.text || token.raw || '');
+        this.pushTextBlocks(blocks, 'quote', 'quote', text);
+        return;
+      }
+
+      if (token.type === 'hr') {
+        blocks.push({
+          object: 'block',
+          type: 'divider',
+          divider: {},
+        });
+      }
+    });
+
     return blocks;
+  }
+
+  private pushTextBlocks(blocks: any[], type: string, contentKey: string, text: string): void {
+    if (!text) {
+      return;
+    }
+
+    this.splitTextByLimit(text, 2000).forEach((chunk) => {
+      blocks.push({
+        object: 'block',
+        type,
+        [contentKey]: {
+          rich_text: [
+            {
+              type: 'text',
+              text: { content: chunk },
+            },
+          ],
+        },
+      });
+    });
+  }
+
+  private toPlainText(text: string): string {
+    return (text || '')
+      .replace(/!\[[^\]]*\]\([^)]+\)/g, '')
+      .replace(/\[([^\]]+)\]\([^)]+\)/g, '$1')
+      .replace(/[*_~`]/g, '')
+      .trim();
   }
 
   private splitTextByLimit(text: string, limit: number): string[] {
@@ -606,6 +562,48 @@ class NotionService {
     return chunks;
   }
 
+  private buildImageBlock(imageRef: string, alt?: string): any | null {
+    if (!imageRef) {
+      return null;
+    }
+
+    const caption = alt
+      ? [
+          {
+            type: 'text',
+            text: { content: alt.substring(0, 2000) },
+          },
+        ]
+      : [];
+
+    const isUuid = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(imageRef);
+    if (isUuid) {
+      return {
+        object: 'block',
+        type: 'image',
+        image: {
+          type: 'file_upload',
+          file_upload: { id: imageRef },
+          caption,
+        },
+      };
+    }
+
+    if (!imageRef.startsWith('http') || imageRef.length > 2000) {
+      return null;
+    }
+
+    return {
+      object: 'block',
+      type: 'image',
+      image: {
+        type: 'external',
+        external: { url: imageRef },
+        caption,
+      },
+    };
+  }
+
   private async appendBlockChildrenInBatches(parentBlockId: string, children: any[]): Promise<void> {
     const batchSize = 100;
     for (let i = 0; i < children.length; i += batchSize) {
@@ -615,6 +613,124 @@ class NotionService {
       });
       this.recordRequest();
     }
+  }
+
+  async migrateExternalImageBlocks(pageId: string): Promise<{ processed: number; migrated: number; failed: number }> {
+    const stats = { processed: 0, migrated: 0, failed: 0 };
+    const queue: string[] = [pageId];
+
+    while (queue.length > 0) {
+      const parentId = queue.shift()!;
+      const children = await this.listAllBlockChildren(parentId);
+
+      for (const block of children) {
+        if (block.has_children && block.id) {
+          queue.push(block.id);
+        }
+
+        if (block.type === 'image' && block.image?.type === 'external' && block.image?.external?.url) {
+          stats.processed += 1;
+          try {
+            const imageUrl = block.image.external.url;
+            const blob = await this.downloadExternalImage(imageUrl);
+            const filename = this.buildImageFilename(imageUrl, blob.type);
+            const fileUploadId = await this.uploadFile(blob, filename);
+
+            await requestService.notionPatch(`/blocks/${block.id}`, {
+              image: {
+                type: 'file_upload',
+                file_upload: { id: fileUploadId },
+                caption: block.image.caption || [],
+              },
+            });
+            this.recordRequest();
+
+            stats.migrated += 1;
+          } catch (error) {
+            stats.failed += 1;
+            console.warn('[NotionService] Failed to migrate external image block:', block.id, error);
+          }
+        }
+      }
+    }
+
+    return stats;
+  }
+
+  private async listAllBlockChildren(blockId: string): Promise<any[]> {
+    const allChildren: any[] = [];
+    let nextCursor: string | undefined;
+    let hasMore = true;
+
+    while (hasMore) {
+      const query = new URLSearchParams({ page_size: '100' });
+      if (nextCursor) {
+        query.set('start_cursor', nextCursor);
+      }
+
+      const response = await requestService.notionRequest<any>({
+        method: 'GET',
+        url: `/blocks/${blockId}/children?${query.toString()}`,
+      });
+      this.recordRequest();
+
+      const results = Array.isArray(response.results) ? response.results : [];
+      allChildren.push(...results);
+      hasMore = Boolean(response.has_more);
+      nextCursor = response.next_cursor || undefined;
+    }
+
+    return allChildren;
+  }
+
+  private async downloadExternalImage(url: string): Promise<Blob> {
+    const controller = new AbortController();
+    const timeoutId = setTimeout(() => controller.abort(), 20000);
+
+    try {
+      const response = await fetch(url, {
+        signal: controller.signal,
+        credentials: 'omit',
+      });
+
+      if (!response.ok) {
+        throw new Error(`HTTP ${response.status}`);
+      }
+
+      return await response.blob();
+    } finally {
+      clearTimeout(timeoutId);
+    }
+  }
+
+  private buildImageFilename(url: string, mimeType?: string): string {
+    const urlPath = url.split('?')[0];
+    const lastPart = urlPath.split('/').pop() || '';
+    const hasExt = /\.[a-zA-Z0-9]{2,5}$/.test(lastPart);
+
+    if (hasExt) {
+      return lastPart;
+    }
+
+    const extension = this.getImageExtensionByMime(mimeType);
+    return `image-${Date.now()}.${extension}`;
+  }
+
+  private getImageExtensionByMime(mimeType?: string): string {
+    const mimeToExt: Record<string, string> = {
+      'image/jpeg': 'jpg',
+      'image/jpg': 'jpg',
+      'image/png': 'png',
+      'image/gif': 'gif',
+      'image/webp': 'webp',
+      'image/svg+xml': 'svg',
+    };
+
+    if (!mimeType) {
+      return 'jpg';
+    }
+
+    return mimeToExt[mimeType] || 'jpg';
   }
 
   /**
@@ -676,7 +792,7 @@ class NotionService {
                   {
                     name: 'image',
                     type: 'file_upload',
-                    file_upload: { file_upload_id: imageRef },
+                    file_upload: { id: imageRef },
                   },
                 ],
               };

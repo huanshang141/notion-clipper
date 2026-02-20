@@ -16,6 +16,7 @@ import {
   AuthStatusResponse,
   GetDatabasesResponse,
   GetDatabaseSchemaResponse,
+  ExtractedImage,
 } from '../types';
 
 console.log('[NotionClipper Background] Service Worker initialized');
@@ -370,12 +371,24 @@ async function handleSaveToNotion(
       throw new Error('Not authenticated');
     }
 
-    // Process images if requested
+    // Process images referenced in markdown content if requested
     let imagesMap: Record<string, string> = {};
-    if (shouldDownloadImages && article.images?.length > 0) {
+    if (shouldDownloadImages) {
       try {
+        const markdownImageUrls = extractMarkdownImageUrls(article.content || '', article.url);
+        const imageUrlsToUpload = new Set<string>(markdownImageUrls);
+        if (article.mainImage?.startsWith('http')) {
+          imageUrlsToUpload.add(article.mainImage);
+        }
+
+        if (imageUrlsToUpload.size === 0) {
+          console.log('[NotionClipper Background] No markdown images found for upload');
+        }
+
+        const imagesForUpload: ExtractedImage[] = Array.from(imageUrlsToUpload).map((src) => ({ src }));
+
         console.log('[NotionClipper Background] Downloading images for upload to Notion...');
-        const { results, errors } = await ImageService.downloadImages(article.images);
+        const { results, errors } = await ImageService.downloadImages(imagesForUpload);
         
         if (errors.size > 0) {
           console.warn('[NotionClipper Background] Some images failed to download:', errors);
@@ -412,6 +425,15 @@ async function handleSaveToNotion(
       imagesMap
     );
 
+    if (shouldDownloadImages) {
+      try {
+        const migration = await NotionService.migrateExternalImageBlocks(result.id);
+        console.log('[NotionClipper Background] External image migration result:', migration);
+      } catch (migrationError) {
+        console.warn('[NotionClipper Background] External image migration skipped due to error:', migrationError);
+      }
+    }
+
     // Save last used database
     await StorageService.setLastDatabase(databaseId, `Database ${databaseId.slice(0, 8)}`);
 
@@ -426,6 +448,33 @@ async function handleSaveToNotion(
       error: error instanceof Error ? error.message : 'Failed to save to Notion',
     });
   }
+}
+
+function extractMarkdownImageUrls(markdown: string, baseUrl?: string): string[] {
+  if (!markdown) {
+    return [];
+  }
+
+  const urls = new Set<string>();
+  const imageRegex = /!\[[^\]]*\]\(([^)\s]+)(?:\s+"[^"]*")?\)/g;
+  let match: RegExpExecArray | null = imageRegex.exec(markdown);
+
+  while (match) {
+    const rawUrl = match[1]?.trim();
+    if (rawUrl) {
+      try {
+        const resolved = baseUrl ? new URL(rawUrl, baseUrl).href : rawUrl;
+        if (resolved.startsWith('http')) {
+          urls.add(resolved);
+        }
+      } catch {
+        // Ignore invalid URL
+      }
+    }
+    match = imageRegex.exec(markdown);
+  }
+
+  return Array.from(urls);
 }
 
 console.log('Notion Clipper background script loaded');

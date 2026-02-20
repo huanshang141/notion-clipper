@@ -64,8 +64,8 @@ export const COMMON_FIELD_NAMES = {
 
 // UI Constants
 export const UI_CONSTANTS = {
-  POPUP_WIDTH: 500,
-  POPUP_HEIGHT: 600,
+  POPUP_WIDTH: 860,
+  POPUP_HEIGHT: 820,
   LOADING_TIMEOUT: 10000,
   SAVE_TIMEOUT: 30000,
 } as const;
