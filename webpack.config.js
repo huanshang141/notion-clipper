@@ -1,0 +1,61 @@
+const path = require('path');
+const CopyPlugin = require('copy-webpack-plugin');
+const { CleanWebpackPlugin } = require('clean-webpack-plugin');
+const HtmlWebpackPlugin = require('html-webpack-plugin');
+
+module.exports = {
+  mode: 'development',
+  entry: {
+    background: './src/background/index.ts',
+    content: './src/content/index.ts',
+    popup: './src/popup/index.tsx',
+    options: './src/options/index.tsx',
+  },
+  output: {
+    filename: '[name].js',
+    path: path.resolve(__dirname, 'dist'),
+  },
+  module: {
+    rules: [
+      {
+        test: /\.tsx?$/,
+        use: 'ts-loader',
+        exclude: /node_modules/,
+      },
+      {
+        test: /\.css$/i,
+        use: ['style-loader', 'css-loader'],
+      },
+    ],
+  },
+  resolve: {
+    extensions: ['.ts', '.tsx', '.js', '.jsx'],
+    alias: {
+      '@': path.resolve(__dirname, 'src/'),
+    },
+  },
+  plugins: [
+    new CleanWebpackPlugin(),
+    new CopyPlugin({
+      patterns: [
+        { from: 'manifest.json', to: 'manifest.json' },
+      ],
+    }),
+    new HtmlWebpackPlugin({
+      template: './public/popup.html',
+      filename: 'popup.html',
+      chunks: ['popup'],
+      inject: 'body',
+    }),
+    new HtmlWebpackPlugin({
+      template: './public/options.html',
+      filename: 'options.html',
+      chunks: ['options'],
+      inject: 'body',
+    }),
+  ],
+  devtool: 'source-map',
+  optimization: {
+    minimize: false,
+  },
+};
