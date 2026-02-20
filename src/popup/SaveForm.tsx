@@ -4,6 +4,7 @@
  */
 
 import React, { useState, useEffect } from 'react';
+import { marked } from 'marked';
 import TurndownService from 'turndown';
 import { sendToBackground } from '../utils/ipc';
 import { ExtractedArticle, NotionDatabase, NotionProperty } from '../types';
@@ -44,8 +45,8 @@ export default function SaveForm({
   onSave,
 }: SaveFormProps) {
   const [title, setTitle] = useState(article.title);
-  const [editedHtml, setEditedHtml] = useState(getInitialHtml(article));
-  const [previewHtml, setPreviewHtml] = useState(sanitizeHtml(getInitialHtml(article)));
+  const [editedMarkdown, setEditedMarkdown] = useState(getInitialMarkdown(article));
+  const [previewHtml, setPreviewHtml] = useState(sanitizeHtml(marked.parse(getInitialMarkdown(article)) as string));
   const [fieldMappings, setFieldMappings] = useState<Record<string, FieldMappingConfig>>({});
   const [isLoadingSchema, setIsLoadingSchema] = useState(false);
 
@@ -170,10 +171,10 @@ export default function SaveForm({
   const [fieldMapping, setFieldMapping] = useState<Record<string, any>>({});
 
   useEffect(() => {
-    const initialHtml = getInitialHtml(article);
+    const initialMarkdown = getInitialMarkdown(article);
     setTitle(article.title);
-    setEditedHtml(initialHtml);
-    setPreviewHtml(sanitizeHtml(initialHtml));
+    setEditedMarkdown(initialMarkdown);
+    setPreviewHtml(sanitizeHtml(marked.parse(initialMarkdown) as string));
   }, [article]);
 
   // Initialize field mapping from schema
@@ -298,12 +299,13 @@ export default function SaveForm({
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
 
-    const normalizedHtml = editedHtml.trim();
+    const normalizedMarkdown = editedMarkdown.trim();
+    const generatedPreviewHtml = sanitizeHtml(marked.parse(normalizedMarkdown || article.content || '') as string);
     const finalArticle: ExtractedArticle = {
       ...article,
       title,
-      rawHtml: normalizedHtml,
-      content: normalizedHtml ? turndownService.turndown(normalizedHtml) : article.content,
+      rawHtml: generatedPreviewHtml,
+      content: normalizedMarkdown || article.content,
       contentFormat: 'markdown',
     };
 
@@ -337,14 +339,108 @@ export default function SaveForm({
 
     const value = (sourceArticle as any)[sourceField];
     if (value === undefined && sourceField === 'title') {
-      return buildPropertyValue(propertyType, sourceArticle.title);
+      return buildPropertyValueForValue(propertyType, sourceArticle.title);
     }
-    return buildPropertyValue(propertyType, value);
+    return buildPropertyValueForValue(propertyType, value);
   };
 
-  const handleHtmlChange = (nextHtml: string) => {
-    setEditedHtml(nextHtml);
-    setPreviewHtml(sanitizeHtml(nextHtml));
+  const handleEditorInput = (nextHtml: string) => {
+    const sanitized = sanitizeHtml(nextHtml);
+    const markdown = turndownService.turndown(sanitized);
+    setEditedMarkdown(markdown);
+    setPreviewHtml(sanitized);
+  };
+
+  const buildPropertyValueForValue = (propertyType: string, value: any) => {
+    if (!value && propertyType !== 'checkbox') {
+      return null;
+    }
+
+    switch (propertyType) {
+      case 'title':
+        return {
+          title: [
+            {
+              type: 'text',
+              text: { content: String(value || '').substring(0, 2000) },
+            },
+          ],
+        };
+
+      case 'rich_text':
+      case 'text':
+        return {
+          rich_text: [
+            {
+              type: 'text',
+              text: { content: String(value || '').substring(0, 2000) },
+            },
+          ],
+        };
+
+      case 'url': {
+        const urlStr = String(value || '');
+        if (urlStr && (urlStr.startsWith('http') || urlStr.startsWith('/'))) {
+          return { url: urlStr };
+        }
+        return null;
+      }
+
+      case 'files':
+        if (value && String(value).startsWith('http')) {
+          return {
+            files: [
+              {
+                name: 'image',
+                type: 'external',
+                external: { url: String(value) },
+              },
+            ],
+          };
+        }
+        return null;
+
+      case 'checkbox':
+        return { checkbox: Boolean(value) };
+
+      case 'select': {
+        const selectValue = String(value || '').substring(0, 100).trim();
+        return selectValue ? { select: { name: selectValue } } : null;
+      }
+
+      case 'multi_select': {
+        const tags = Array.isArray(value) ? value : [value];
+        const validTags = tags
+          .filter((tag) => tag)
+          .map((tag) => ({ name: String(tag).substring(0, 100).trim() }))
+          .filter((tag) => tag.name);
+
+        return validTags.length > 0 ? { multi_select: validTags } : null;
+      }
+
+      case 'date': {
+        const dateStr = String(value || '').substring(0, 10);
+        return dateStr && /^\d{4}-\d{2}-\d{2}/.test(dateStr)
+          ? { date: { start: dateStr } }
+          : null;
+      }
+
+      case 'number': {
+        const num = Number(value);
+        return !isNaN(num) ? { number: num } : null;
+      }
+
+      case 'email': {
+        const email = String(value || '').trim();
+        return email && email.includes('@') ? { email } : null;
+      }
+
+      case 'phone_number':
+        return { phone_number: String(value || '').trim() };
+
+      default:
+        return null;
+    }
   };
 
   return (
@@ -388,17 +484,19 @@ export default function SaveForm({
       </div>
 
       <div className="form-group">
-        <label htmlFor="content-editor">Content (editable HTML with live preview)</label>
+        <label htmlFor="content-editor">Content (WYSIWYG edit + markdown sync)</label>
         <div className="live-editor-grid">
-          <textarea
+          <div
             id="content-editor"
-            value={editedHtml}
-            onChange={(e) => handleHtmlChange(e.target.value)}
-            disabled={isSaving}
             className="live-editor-textarea"
+            contentEditable={!isSaving}
+            suppressContentEditableWarning
+            dangerouslySetInnerHTML={{ __html: previewHtml }}
+            onInput={(e) => handleEditorInput((e.currentTarget as HTMLDivElement).innerHTML)}
           />
           <div className="live-editor-preview" dangerouslySetInnerHTML={{ __html: previewHtml }} />
         </div>
+        <small className="help-text">最终保存使用编辑后的 Markdown 内容。</small>
       </div>
 
       {/* Schema Fields Preview */}
@@ -445,17 +543,16 @@ export default function SaveForm({
   );
 }
 
-function getInitialHtml(article: ExtractedArticle): string {
-  if (article.rawHtml && article.rawHtml.trim()) {
-    return article.rawHtml;
+function getInitialMarkdown(article: ExtractedArticle): string {
+  if (article.content && article.content.trim()) {
+    return article.content;
   }
 
-  const escaped = escapeHtml(article.content || '');
-  return escaped
-    .split('\n')
-    .filter((line) => line.trim())
-    .map((line) => `<p>${line}</p>`)
-    .join('');
+  if (article.rawHtml && article.rawHtml.trim()) {
+    return turndownService.turndown(article.rawHtml);
+  }
+
+  return '';
 }
 
 function sanitizeHtml(html: string): string {
@@ -485,11 +582,3 @@ function sanitizeHtml(html: string): string {
   return doc.body.innerHTML;
 }
 
-function escapeHtml(input: string): string {
-  return input
-    .replace(/&/g, '&amp;')
-    .replace(/</g, '&lt;')
-    .replace(/>/g, '&gt;')
-    .replace(/"/g, '&quot;')
-    .replace(/'/g, '&#39;');
-}

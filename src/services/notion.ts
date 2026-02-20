@@ -286,9 +286,14 @@ class NotionService {
         if (!mapping || mapping.isEnabled === false) continue;
 
         let value: any = null;
+        const propertyKey = mapping.propertyName || propId;
+
+        if (this.isNotionPropertyValueObject(mapping)) {
+          value = mapping;
+        }
 
         // If mapping has a sourceField, extract from article
-        if (mapping.sourceField) {
+        else if (mapping.sourceField) {
           const sourceValue = (article as any)[mapping.sourceField];
           value = this.buildPropertyValue(
             mapping.propertyType,
@@ -305,40 +310,13 @@ class NotionService {
         }
 
         if (value !== null) {
-          properties[propId] = value;
+          properties[propertyKey] = value;
         }
       }
-
-      this.recordRequest();
 
       // Build page content (children blocks)
-      const children: any[] = [];
-
-      // Add content as paragraph blocks if not already mapped
-      if (article.content) {
-        const contentLines = article.content.split('\n');
-        const blockLimit = 20; // Notion has block limits per page
-
-        for (let i = 0; i < Math.min(contentLines.length, blockLimit); i++) {
-          const line = contentLines[i].trim();
-          if (!line) continue;
-
-          children.push({
-            object: 'block',
-            type: 'paragraph',
-            paragraph: {
-              rich_text: [
-                {
-                  type: 'text',
-                  text: {
-                    content: line.substring(0, 2000), // Notion text limit
-                  },
-                },
-              ],
-            },
-          });
-        }
-      }
+      const contentBlocks = this.buildContentBlocksFromMarkdown(article.content || '');
+      const children: any[] = [...contentBlocks];
 
       // Add images as separate blocks
       if (article.images && article.images.length > 0) {
@@ -429,13 +407,14 @@ class NotionService {
       }
 
       // Create the page using data_source_id (2025-09-03 API)
+      const initialChildren = children.slice(0, 100);
       const pagePayload: any = {
         parent: { 
           type: 'data_source_id',
           data_source_id: dataSourceId 
         },
         properties,
-        children: children.length > 0 ? children : undefined,
+        children: initialChildren.length > 0 ? initialChildren : undefined,
       };
 
       if (icon) pagePayload.icon = icon;
@@ -445,9 +424,15 @@ class NotionService {
         '/pages',
         pagePayload
       );
+      this.recordRequest();
 
       if (!response.id) {
         throw new Error('No page ID returned from Notion');
+      }
+
+      const remainingChildren = children.slice(100);
+      if (remainingChildren.length > 0) {
+        await this.appendBlockChildrenInBatches(response.id, remainingChildren);
       }
 
       return {
@@ -463,6 +448,172 @@ class NotionService {
         throw new Error('Authentication failed. Please check your API key.');
       }
       throw new Error(`Failed to create page: ${message}`);
+    }
+  }
+
+  private isNotionPropertyValueObject(value: any): boolean {
+    if (!value || typeof value !== 'object' || Array.isArray(value)) {
+      return false;
+    }
+
+    const propertyValueKeys = [
+      'title',
+      'rich_text',
+      'url',
+      'files',
+      'checkbox',
+      'select',
+      'multi_select',
+      'date',
+      'number',
+      'email',
+      'phone_number',
+      'people',
+      'relation',
+      'status',
+    ];
+
+    return propertyValueKeys.some((key) => key in value);
+  }
+
+  private buildContentBlocksFromMarkdown(markdown: string): any[] {
+    if (!markdown || !markdown.trim()) {
+      return [];
+    }
+
+    const blocks: any[] = [];
+    const lines = markdown.split('\n');
+    let paragraphBuffer: string[] = [];
+
+    const flushParagraph = () => {
+      const paragraphText = paragraphBuffer.join(' ').trim();
+      paragraphBuffer = [];
+
+      if (!paragraphText) {
+        return;
+      }
+
+      this.splitTextByLimit(paragraphText, 2000).forEach((chunk) => {
+        blocks.push({
+          object: 'block',
+          type: 'paragraph',
+          paragraph: {
+            rich_text: [
+              {
+                type: 'text',
+                text: { content: chunk },
+              },
+            ],
+          },
+        });
+      });
+    };
+
+    lines.forEach((rawLine) => {
+      const line = rawLine.trim();
+
+      if (!line) {
+        flushParagraph();
+        return;
+      }
+
+      const headingMatch = line.match(/^(#{1,3})\s+(.+)$/);
+      if (headingMatch) {
+        flushParagraph();
+        const level = headingMatch[1].length;
+        const text = headingMatch[2].trim();
+        const type = `heading_${level}`;
+
+        this.splitTextByLimit(text, 2000).forEach((chunk) => {
+          blocks.push({
+            object: 'block',
+            type,
+            [type]: {
+              rich_text: [
+                {
+                  type: 'text',
+                  text: { content: chunk },
+                },
+              ],
+            },
+          });
+        });
+        return;
+      }
+
+      const bulletedMatch = line.match(/^[-*]\s+(.+)$/);
+      if (bulletedMatch) {
+        flushParagraph();
+        const text = bulletedMatch[1].trim();
+        this.splitTextByLimit(text, 2000).forEach((chunk) => {
+          blocks.push({
+            object: 'block',
+            type: 'bulleted_list_item',
+            bulleted_list_item: {
+              rich_text: [
+                {
+                  type: 'text',
+                  text: { content: chunk },
+                },
+              ],
+            },
+          });
+        });
+        return;
+      }
+
+      const numberedMatch = line.match(/^\d+\.\s+(.+)$/);
+      if (numberedMatch) {
+        flushParagraph();
+        const text = numberedMatch[1].trim();
+        this.splitTextByLimit(text, 2000).forEach((chunk) => {
+          blocks.push({
+            object: 'block',
+            type: 'numbered_list_item',
+            numbered_list_item: {
+              rich_text: [
+                {
+                  type: 'text',
+                  text: { content: chunk },
+                },
+              ],
+            },
+          });
+        });
+        return;
+      }
+
+      paragraphBuffer.push(line);
+    });
+
+    flushParagraph();
+    return blocks;
+  }
+
+  private splitTextByLimit(text: string, limit: number): string[] {
+    if (!text || text.length <= limit) {
+      return text ? [text] : [];
+    }
+
+    const chunks: string[] = [];
+    let start = 0;
+
+    while (start < text.length) {
+      chunks.push(text.slice(start, start + limit));
+      start += limit;
+    }
+
+    return chunks;
+  }
+
+  private async appendBlockChildrenInBatches(parentBlockId: string, children: any[]): Promise<void> {
+    const batchSize = 100;
+    for (let i = 0; i < children.length; i += batchSize) {
+      const batch = children.slice(i, i + batchSize);
+      await requestService.notionPatch(`/blocks/${parentBlockId}/children`, {
+        children: batch,
+      });
+      this.recordRequest();
     }
   }
 

@@ -294,9 +294,23 @@ body {
 
 .live-editor-textarea {
   min-height: 200px;
+  max-height: 320px;
+  overflow: auto;
   resize: vertical;
+  border: 1px solid var(--border-color);
+  border-radius: 4px;
+  padding: 10px;
+  background: #ffffff;
   font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, 'Liberation Mono', 'Courier New', monospace;
   font-size: 12px;
+  line-height: 1.5;
+  white-space: normal;
+}
+
+.live-editor-textarea:focus {
+  outline: none;
+  border-color: var(--primary-color);
+  box-shadow: 0 0 0 3px rgba(0, 102, 204, 0.1);
 }
 
 .live-editor-preview {
