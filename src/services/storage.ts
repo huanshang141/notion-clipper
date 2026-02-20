@@ -3,10 +3,11 @@
  * Provides unified interface for storing and retrieving app data
  */
 
-import { StorageData, NotionAuthToken } from '../types';
+import { StorageData, NotionAuthToken, EditorDraft } from '../types';
 
 class StorageService {
   private static readonly STORAGE_KEY = 'notion_clipper_data';
+  private static readonly EDITOR_DRAFT_PREFIX = 'notion_editor_draft_';
 
   /**
    * Get the entire storage data
@@ -130,6 +131,41 @@ class StorageService {
   static async clearAll(): Promise<void> {
     return new Promise((resolve, reject) => {
       chrome.storage.sync.remove([this.STORAGE_KEY], () => {
+        if (chrome.runtime.lastError) {
+          reject(chrome.runtime.lastError);
+        } else {
+          resolve();
+        }
+      });
+    });
+  }
+
+  static async setEditorDraft(draft: EditorDraft): Promise<void> {
+    return new Promise((resolve, reject) => {
+      chrome.storage.local.set(
+        { [`${this.EDITOR_DRAFT_PREFIX}${draft.id}`]: draft },
+        () => {
+          if (chrome.runtime.lastError) {
+            reject(chrome.runtime.lastError);
+          } else {
+            resolve();
+          }
+        }
+      );
+    });
+  }
+
+  static async getEditorDraft(draftId: string): Promise<EditorDraft | null> {
+    return new Promise((resolve) => {
+      chrome.storage.local.get([`${this.EDITOR_DRAFT_PREFIX}${draftId}`], (result) => {
+        resolve(result[`${this.EDITOR_DRAFT_PREFIX}${draftId}`] || null);
+      });
+    });
+  }
+
+  static async removeEditorDraft(draftId: string): Promise<void> {
+    return new Promise((resolve, reject) => {
+      chrome.storage.local.remove([`${this.EDITOR_DRAFT_PREFIX}${draftId}`], () => {
         if (chrome.runtime.lastError) {
           reject(chrome.runtime.lastError);
         } else {

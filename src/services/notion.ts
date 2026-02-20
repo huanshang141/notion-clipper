@@ -433,36 +433,24 @@ class NotionService {
     tokens.forEach((token: any) => {
       if (token.type === 'heading') {
         const level = Math.min(Math.max(Number(token.depth || 1), 1), 3);
-        const type = `heading_${level}`;
-        const text = this.toPlainText(token.text || token.raw || '');
-        this.pushTextBlocks(blocks, type, type, text);
+        const key = `heading_${level}`;
+        const richText = this.buildRichTextFromInlineTokens(token.tokens || []);
+        this.pushRichTextBlock(blocks, key, key, richText);
+        this.appendImageBlocksFromInlineTokens(blocks, token.tokens || [], imagesData);
         return;
       }
 
       if (token.type === 'paragraph') {
-        const inlineTokens: any[] = Array.isArray(token.tokens) ? token.tokens : [];
-        const imageTokens = inlineTokens.filter((t) => t.type === 'image');
-        const text = this.toPlainText(token.text || token.raw || '');
-
-        if (text) {
-          this.pushTextBlocks(blocks, 'paragraph', 'paragraph', text);
-        }
-
-        imageTokens.forEach((imageToken) => {
-          const originalUrl = (imageToken.href || '').trim();
-          const imageRef = imagesData?.[originalUrl] || originalUrl;
-          const imageBlock = this.buildImageBlock(imageRef, this.toPlainText(imageToken.text || ''));
-          if (imageBlock) {
-            blocks.push(imageBlock);
-          }
-        });
+        const richText = this.buildRichTextFromInlineTokens(token.tokens || []);
+        this.pushRichTextBlock(blocks, 'paragraph', 'paragraph', richText);
+        this.appendImageBlocksFromInlineTokens(blocks, token.tokens || [], imagesData);
         return;
       }
 
       if (token.type === 'image') {
         const originalUrl = (token.href || '').trim();
         const imageRef = imagesData?.[originalUrl] || originalUrl;
-        const imageBlock = this.buildImageBlock(imageRef, this.toPlainText(token.text || ''));
+        const imageBlock = this.buildImageBlock(imageRef, token.text || '');
         if (imageBlock) {
           blocks.push(imageBlock);
         }
@@ -472,9 +460,12 @@ class NotionService {
       if (token.type === 'list') {
         const listType = token.ordered ? 'numbered_list_item' : 'bulleted_list_item';
         const items: any[] = Array.isArray(token.items) ? token.items : [];
+
         items.forEach((item) => {
-          const text = this.toPlainText(item.text || item.raw || '');
-          this.pushTextBlocks(blocks, listType, listType, text);
+          const itemTokens = this.extractInlineTokensFromListItem(item);
+          const richText = this.buildRichTextFromInlineTokens(itemTokens);
+          this.pushRichTextBlock(blocks, listType, listType, richText);
+          this.appendImageBlocksFromInlineTokens(blocks, itemTokens, imagesData);
         });
         return;
       }
@@ -486,7 +477,7 @@ class NotionService {
             object: 'block',
             type: 'code',
             code: {
-              language: (token.lang || 'plain text').substring(0, 20),
+              language: this.normalizeCodeLanguage(token.lang),
               rich_text: [
                 {
                   type: 'text',
@@ -500,8 +491,9 @@ class NotionService {
       }
 
       if (token.type === 'blockquote') {
-        const text = this.toPlainText(token.text || token.raw || '');
-        this.pushTextBlocks(blocks, 'quote', 'quote', text);
+        const richText = this.buildRichTextFromInlineTokens(token.tokens || []);
+        this.pushRichTextBlock(blocks, 'quote', 'quote', richText);
+        this.appendImageBlocksFromInlineTokens(blocks, token.tokens || [], imagesData);
         return;
       }
 
@@ -517,33 +509,212 @@ class NotionService {
     return blocks;
   }
 
-  private pushTextBlocks(blocks: any[], type: string, contentKey: string, text: string): void {
-    if (!text) {
+  private pushRichTextBlock(blocks: any[], type: string, contentKey: string, richText: any[]): void {
+    const normalized = richText.length > 0
+      ? richText
+      : [
+          {
+            type: 'text',
+            text: { content: ' ' },
+            annotations: this.defaultAnnotations(),
+          },
+        ];
+
+    blocks.push({
+      object: 'block',
+      type,
+      [contentKey]: {
+        rich_text: normalized,
+      },
+    });
+  }
+
+  private buildRichTextFromInlineTokens(tokens: any[], annotations?: any, href?: string): any[] {
+    const result: any[] = [];
+    const base = annotations || this.defaultAnnotations();
+
+    (tokens || []).forEach((token: any) => {
+      if (!token) {
+        return;
+      }
+
+      if (token.type === 'text' || token.type === 'escape') {
+        this.pushRichTextContent(result, token.text || token.raw || '', base, href);
+        return;
+      }
+
+      if (token.type === 'codespan') {
+        this.pushRichTextContent(result, token.text || '', { ...base, code: true }, href);
+        return;
+      }
+
+      if (token.type === 'br') {
+        this.pushRichTextContent(result, '\n', base, href);
+        return;
+      }
+
+      if (token.type === 'strong') {
+        result.push(...this.buildRichTextFromInlineTokens(token.tokens || [], { ...base, bold: true }, href));
+        return;
+      }
+
+      if (token.type === 'em') {
+        result.push(...this.buildRichTextFromInlineTokens(token.tokens || [], { ...base, italic: true }, href));
+        return;
+      }
+
+      if (token.type === 'del') {
+        result.push(...this.buildRichTextFromInlineTokens(token.tokens || [], { ...base, strikethrough: true }, href));
+        return;
+      }
+
+      if (token.type === 'link') {
+        const link = this.normalizeLink(token.href || '');
+        result.push(...this.buildRichTextFromInlineTokens(token.tokens || [], base, link || href));
+        return;
+      }
+
+      if (token.type === 'html') {
+        const text = this.stripHtml(token.raw || token.text || '');
+        this.pushRichTextContent(result, text, base, href);
+        return;
+      }
+
+      if (token.type === 'image') {
+        return;
+      }
+
+      if (token.tokens) {
+        result.push(...this.buildRichTextFromInlineTokens(token.tokens, base, href));
+      } else {
+        this.pushRichTextContent(result, token.text || token.raw || '', base, href);
+      }
+    });
+
+    return result;
+  }
+
+  private appendImageBlocksFromInlineTokens(blocks: any[], tokens: any[], imagesData?: Record<string, string>): void {
+    const images = this.collectImageTokens(tokens || []);
+    images.forEach((imageToken) => {
+      const originalUrl = (imageToken.href || '').trim();
+      const imageRef = imagesData?.[originalUrl] || originalUrl;
+      const imageBlock = this.buildImageBlock(imageRef, imageToken.text || '');
+      if (imageBlock) {
+        blocks.push(imageBlock);
+      }
+    });
+  }
+
+  private collectImageTokens(tokens: any[]): any[] {
+    const result: any[] = [];
+
+    (tokens || []).forEach((token: any) => {
+      if (!token) {
+        return;
+      }
+
+      if (token.type === 'image') {
+        result.push(token);
+      }
+
+      if (Array.isArray(token.tokens)) {
+        result.push(...this.collectImageTokens(token.tokens));
+      }
+    });
+
+    return result;
+  }
+
+  private extractInlineTokensFromListItem(item: any): any[] {
+    if (!item) {
+      return [];
+    }
+
+    if (Array.isArray(item.tokens) && item.tokens.length > 0) {
+      const paragraphToken = item.tokens.find((token: any) => token.type === 'text' || token.type === 'paragraph');
+      const paragraphAny = paragraphToken as any;
+      if (paragraphAny?.tokens) {
+        return paragraphAny.tokens;
+      }
+    }
+
+    if (typeof item.text === 'string' && item.text.trim()) {
+      const inlineRoot = marked.lexer(item.text, { gfm: true, breaks: true });
+      const paragraph = inlineRoot.find((token: any) => token.type === 'paragraph');
+      return (paragraph as any)?.tokens || [];
+    }
+
+    return [];
+  }
+
+  private pushRichTextContent(target: any[], text: string, annotations: any, href?: string): void {
+    const cleanText = text || '';
+    if (!cleanText) {
       return;
     }
 
-    this.splitTextByLimit(text, 2000).forEach((chunk) => {
-      blocks.push({
-        object: 'block',
-        type,
-        [contentKey]: {
-          rich_text: [
-            {
-              type: 'text',
-              text: { content: chunk },
-            },
-          ],
+    this.splitTextByLimit(cleanText, 2000).forEach((chunk) => {
+      target.push({
+        type: 'text',
+        text: {
+          content: chunk,
+          link: href ? { url: href } : null,
+        },
+        annotations: {
+          ...this.defaultAnnotations(),
+          ...annotations,
         },
       });
     });
   }
 
-  private toPlainText(text: string): string {
-    return (text || '')
-      .replace(/!\[[^\]]*\]\([^)]+\)/g, '')
-      .replace(/\[([^\]]+)\]\([^)]+\)/g, '$1')
-      .replace(/[*_~`]/g, '')
-      .trim();
+  private defaultAnnotations() {
+    return {
+      bold: false,
+      italic: false,
+      strikethrough: false,
+      underline: false,
+      code: false,
+      color: 'default',
+    };
+  }
+
+  private normalizeLink(link: string): string | null {
+    if (!link) {
+      return null;
+    }
+
+    try {
+      const normalized = new URL(link).toString();
+      return normalized.startsWith('http') ? normalized : null;
+    } catch {
+      return null;
+    }
+  }
+
+  private stripHtml(html: string): string {
+    return html.replace(/<[^>]+>/g, '');
+  }
+
+  private normalizeCodeLanguage(language?: string): string {
+    const supported = new Set([
+      'plain text', 'javascript', 'typescript', 'python', 'java', 'c', 'cpp', 'c#', 'go',
+      'rust', 'ruby', 'php', 'swift', 'kotlin', 'sql', 'bash', 'json', 'html', 'css',
+      'markdown', 'yaml', 'toml', 'xml', 'shell', 'powershell'
+    ]);
+
+    const normalized = (language || 'plain text').trim().toLowerCase();
+    if (supported.has(normalized)) {
+      return normalized;
+    }
+
+    if (normalized === 'ts') return 'typescript';
+    if (normalized === 'js') return 'javascript';
+    if (normalized === 'py') return 'python';
+    if (normalized === 'sh') return 'bash';
+
+    return 'plain text';
   }
 
   private splitTextByLimit(text: string, limit: number): string[] {

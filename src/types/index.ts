@@ -160,6 +160,13 @@ export interface SaveToNotionRequest extends ChromeMessage {
   };
 }
 
+export interface EditorDraft {
+  id: string;
+  article: ExtractedArticle;
+  selectedDatabaseId?: string;
+  createdAt: number;
+}
+
 /**
  * Auth status request/response
  */

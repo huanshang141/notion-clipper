@@ -17,6 +17,7 @@ import {
   GetDatabasesResponse,
   GetDatabaseSchemaResponse,
   ExtractedImage,
+  EditorDraft,
 } from '../types';
 
 console.log('[NotionClipper Background] Service Worker initialized');
@@ -65,6 +66,14 @@ chrome.runtime.onMessage.addListener((message: ChromeMessage, sender, sendRespon
       handleSaveToNotion(message, sender, sendResponse);
       return true;
 
+    case MESSAGE_ACTIONS.OPEN_EDITOR_WITH_ARTICLE:
+      handleOpenEditorWithArticle(message, sender, sendResponse);
+      return true;
+
+    case MESSAGE_ACTIONS.GET_EDITOR_DRAFT:
+      handleGetEditorDraft(message, sender, sendResponse);
+      return true;
+
     default:
       return false;
   }
@@ -95,6 +104,69 @@ async function handleAuthenticate(
     sendResponse({
       success: false,
       error: error instanceof Error ? error.message : 'Authentication failed',
+    });
+  }
+}
+
+async function handleOpenEditorWithArticle(
+  message: ChromeMessage,
+  sender: chrome.runtime.MessageSender,
+  sendResponse: (response: { success: boolean; draftId?: string; error?: string }) => void
+) {
+  try {
+    const article = message.data?.article;
+    if (!article) {
+      throw new Error('Article is required to open editor');
+    }
+
+    const draftId = typeof crypto !== 'undefined' && crypto.randomUUID
+      ? crypto.randomUUID()
+      : `${Date.now()}-${Math.floor(Math.random() * 100000)}`;
+
+    const draft: EditorDraft = {
+      id: draftId,
+      article,
+      selectedDatabaseId: message.data?.selectedDatabaseId,
+      createdAt: Date.now(),
+    };
+
+    await StorageService.setEditorDraft(draft);
+
+    const editorUrl = chrome.runtime.getURL(`dist/editor.html?draftId=${encodeURIComponent(draftId)}`);
+    await chrome.tabs.create({ url: editorUrl });
+
+    sendResponse({ success: true, draftId });
+  } catch (error) {
+    console.error('Open editor error:', error);
+    sendResponse({
+      success: false,
+      error: error instanceof Error ? error.message : 'Failed to open editor',
+    });
+  }
+}
+
+async function handleGetEditorDraft(
+  message: ChromeMessage,
+  sender: chrome.runtime.MessageSender,
+  sendResponse: (response: { success: boolean; draft?: EditorDraft; error?: string }) => void
+) {
+  try {
+    const draftId = message.data?.draftId;
+    if (!draftId) {
+      throw new Error('draftId is required');
+    }
+
+    const draft = await StorageService.getEditorDraft(draftId);
+    if (!draft) {
+      throw new Error('Draft not found');
+    }
+
+    sendResponse({ success: true, draft });
+  } catch (error) {
+    console.error('Get editor draft error:', error);
+    sendResponse({
+      success: false,
+      error: error instanceof Error ? error.message : 'Failed to get editor draft',
     });
   }
 }

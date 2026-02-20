@@ -10,6 +10,7 @@ module.exports = {
     background: './src/background/index.ts',
     content: './src/content/index.ts',
     popup: './src/popup/index.tsx',
+    editor: './src/editor/index.tsx',
     options: './src/options/index.tsx',
   },
   output: {
@@ -55,6 +56,12 @@ module.exports = {
       template: './public/options.html',
       filename: 'options.html',
       chunks: ['options'],
+      inject: 'body',
+    }),
+    new HtmlWebpackPlugin({
+      template: './public/editor.html',
+      filename: 'editor.html',
+      chunks: ['editor'],
       inject: 'body',
     }),
   ],

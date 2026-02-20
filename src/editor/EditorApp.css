@@ -1,0 +1,33 @@
+body {
+  background: #f5f7fb;
+}
+
+.popup-container {
+  max-width: 1200px;
+  margin: 0 auto;
+  background: #ffffff;
+  border-left: 1px solid #e8ecf3;
+  border-right: 1px solid #e8ecf3;
+}
+
+.popup-header {
+  position: sticky;
+  top: 0;
+  z-index: 10;
+  background: #ffffff;
+}
+
+.save-form {
+  max-height: calc(100vh - 120px);
+}
+
+.live-editor-grid {
+  grid-template-columns: 1fr 1fr;
+  gap: 12px;
+}
+
+.live-editor-textarea,
+.live-editor-preview {
+  min-height: 380px;
+  max-height: calc(100vh - 340px);
+}
