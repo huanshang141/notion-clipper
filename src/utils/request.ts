@@ -111,6 +111,28 @@ class RequestService {
   }
 
   /**
+   * Send file to Notion for file_upload endpoint
+   * Uses multipart/form-data
+   */
+  async uploadFileToNotion(
+    fileUploadId: string,
+    formData: FormData
+  ): Promise<any> {
+    const client = await this.initNotionClient();
+    const response = await client.post(
+      `/file_uploads/${fileUploadId}/send`,
+      formData,
+      {
+        headers: {
+          'Content-Type': 'multipart/form-data',
+        },
+        timeout: 60000,
+      }
+    );
+    return response.data;
+  }
+
+  /**
    * Reset the Notion client (e.g., after logout)
    */
   resetNotionClient(): void {

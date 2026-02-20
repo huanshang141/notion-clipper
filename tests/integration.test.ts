@@ -96,7 +96,7 @@ async function testListDatabases() {
         },
         body: JSON.stringify({
           filter: {
-            value: 'database',
+            value: 'data_source',
             property: 'object',
           },
           page_size: 10,

@@ -385,13 +385,33 @@ async function handleSaveToNotion(
     let imagesMap: Record<string, string> = {};
     if (shouldDownloadImages && article.images?.length > 0) {
       try {
-        imagesMap = await ImageService.processImagesForNotion(
-          article.images,
-          true
-        );
+        console.log('[NotionClipper Background] Downloading images for upload to Notion...');
+        const { results, errors } = await ImageService.downloadImages(article.images);
+        
+        if (errors.size > 0) {
+          console.warn('[NotionClipper Background] Some images failed to download:', errors);
+        }
+        
+        console.log(`[NotionClipper Background] Successfully downloaded ${results.size} images. Starting upload...`);
+
+        // Upload each downloaded image to Notion
+        for (const [src, blob] of results.entries()) {
+          try {
+            const ext = ImageService.getImageExtension(blob);
+            const filename = `image-${Date.now()}-${Math.floor(Math.random() * 1000)}.${ext}`;
+            
+            // Upload to Notion API
+            const fileUploadId = await NotionService.uploadFile(blob, filename);
+            imagesMap[src] = fileUploadId;
+            console.log(`[NotionClipper Background] Uploaded image ${src} -> ${fileUploadId}`);
+          } catch (uploadError) {
+            console.error(`[NotionClipper Background] Failed to upload image ${src}:`, uploadError);
+            // Fallback to original URL is handled in NotionService if map entry is missing
+          }
+        }
       } catch (error) {
         console.error('Image processing failed:', error);
-        // Continue without images
+        // Continue without images (or with original URLs)
       }
     }
 

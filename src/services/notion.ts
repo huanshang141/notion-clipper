@@ -43,12 +43,12 @@ class NotionService {
     try {
       this.checkRateLimit();
 
-      // In Notion API 2025-09-03, search for data_source instead of database
+      // In Notion API, search for data_source objects
       const response = await requestService.notionPost<any>(
         '/search',
         {
           filter: {
-            value: 'database',  // Reverted to 'database' as 'data_source' is non-standard
+            value: 'data_source',
             property: 'object',
           },
           sort: {
@@ -71,7 +71,7 @@ class NotionService {
         .map((ds: any) => ({
           id: ds.id,  // This is the data_source_id
           databaseId: ds.id,  // In 2025-09-03 API, data_source_id is used as database ID
-          title: this.extractDataSourceTitle(ds),
+          title: ds.name || this.extractDataSourceTitle(ds), // data_source has 'name'
           icon: ds.icon,
           parent: ds.database_parent,  // Parent database info
           lastEditedTime: ds.last_edited_time,
@@ -225,6 +225,44 @@ class NotionService {
   }
 
   /**
+   * Create a file upload and send content to Notion
+   * Returns the file upload ID
+   */
+  async uploadFile(file: Blob, filename: string): Promise<string> {
+    try {
+      this.checkRateLimit();
+
+      // Step 1: Create file upload
+      const createResp = await requestService.notionPost<any>('/file_uploads', {
+        mode: 'single_part',
+        filename: filename,
+        content_type: file.type || 'application/octet-stream',
+      });
+      this.recordRequest();
+
+      if (!createResp.id) {
+        throw new Error('Failed to create file upload session');
+      }
+
+      // Step 2: Send file content
+      const formData = new FormData();
+      formData.append('file', file, filename);
+
+      const sendResp = await requestService.uploadFileToNotion(createResp.id, formData);
+      this.recordRequest();
+
+      if (sendResp.status === 'uploaded') {
+        return sendResp.id;
+      }
+
+      throw new Error(`File upload incomplete: Status ${sendResp.status}`);
+    } catch (error) {
+      console.error('File upload failed:', error);
+      throw error;
+    }
+  }
+
+  /**
    * Create a page in the specified data source
    * NOTE: In Notion API 2025-09-03, use data_source_id instead of database_id
    */
@@ -232,7 +270,7 @@ class NotionService {
     dataSourceId: string,
     article: ExtractedArticle,
     fieldMapping: Record<string, any>,
-    imagesWithUrls?: Record<string, string> // filename -> upload_url mapping
+    imagesData?: Record<string, string> // filename/url -> upload_url or file_upload_id mapping
   ): Promise<{ id: string; url: string }> {
     try {
       if (!dataSourceId || !article) {
@@ -255,14 +293,14 @@ class NotionService {
           value = this.buildPropertyValue(
             mapping.propertyType,
             sourceValue,
-            imagesWithUrls
+            imagesData
           );
         } else if (mapping.customValue !== undefined) {
           // Use custom value if provided
           value = this.buildPropertyValue(
             mapping.propertyType,
             mapping.customValue,
-            imagesWithUrls
+            imagesData
           );
         }
 
@@ -308,58 +346,94 @@ class NotionService {
         for (let i = 0; i < Math.min(article.images.length, imageLimit); i++) {
           const img = article.images[i];
           if (img && img.src) {
-            // Use uploaded URL if available, otherwise use original
-            const imageUrl = imagesWithUrls?.[img.src] || img.src;
+            // Use uploaded URL or ID if available, otherwise use original
+            const imageRef = imagesData?.[img.src] || img.src;
             
-            // Determine if URL is data URI (for embedded images)
-            const isDataUri = imageUrl.startsWith('data:');
+            // Check if it's a UUID (File Upload ID)
+            const isUuid = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(imageRef);
             
-            // Validate URL length (Notion API limit is 2000 characters)
-            if (imageUrl.length > 2000) {
-              console.warn(`[NotionService] Image URL too long (${imageUrl.length} chars). Skipping image.`);
-              continue;
-            }
-
-            children.push({
-              object: 'block',
-              type: 'image',
-              image: {
-                type: 'external',
-                external: {
-                  url: imageUrl,
+            if (isUuid) {
+              children.push({
+                object: 'block',
+                type: 'image',
+                image: {
+                  type: 'file_upload',
+                  file_upload: {
+                    id: imageRef,
+                  },
                 },
-              },
-            });
+              });
+            } else {
+              // Determine if URL is data URI (for embedded images)
+              // Note: Notion external images must be URLs
+              if (imageRef.startsWith('data:')) {
+                // If we still have a data URI here, it means upload failed or wasn't attempted.
+                // We skip huge data URIs to avoid error
+                if (imageRef.length > 2000) {
+                   console.warn(`[NotionService] Data URI image too long (${imageRef.length}). Skipping.`);
+                   continue;
+                }
+                // Try to use it anyway if short enough? Notion might block data URIs in external block.
+                // Best to skip or warn.
+              }
+              
+              // Validate URL length (Notion API limit is 2000 characters)
+              if (imageRef.length > 2000) {
+                console.warn(`[NotionService] Image URL too long (${imageRef.length} chars). Skipping image.`);
+                continue;
+              }
+
+              children.push({
+                object: 'block',
+                type: 'image',
+                image: {
+                  type: 'external',
+                  external: {
+                    url: imageRef,
+                  },
+                },
+              });
+            }
           }
         }
       }
 
       // Prepare Icon and Cover
       let icon: any = undefined;
-      // Use favicon if available and is a valid URL (not data URI if too long, but we'll try)
-      if (article.favicon && article.favicon.startsWith('http')) {
-        if (article.favicon.length <= 2000) {
-          icon = {
-            type: 'external',
-            external: { url: article.favicon },
-          };
-        }
+      // Use favicon if available
+      if (article.favicon && article.favicon.startsWith('http') && article.favicon.length <= 2000) {
+        icon = {
+          type: 'external',
+          external: { url: article.favicon },
+        };
       }
 
       let cover: any = undefined;
       // Use mainImage as cover
-      if (article.mainImage && article.mainImage.startsWith('http')) {
-        if (article.mainImage.length <= 2000) {
-          cover = {
-            type: 'external',
-            external: { url: article.mainImage },
-          };
+      if (article.mainImage) {
+        // Check if main image was uploaded
+        const mainImageRef = imagesData?.[article.mainImage] || article.mainImage;
+        const isMainUuid = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(mainImageRef);
+        
+        if (isMainUuid) {
+           cover = {
+             type: 'file_upload',
+             file_upload: { id: mainImageRef }
+           };
+        } else if (mainImageRef.startsWith('http') && mainImageRef.length <= 2000) {
+           cover = {
+             type: 'external',
+             external: { url: mainImageRef }
+           };
         }
       }
 
-      // Create the page using database_id (standard API)
+      // Create the page using data_source_id (2025-09-03 API)
       const pagePayload: any = {
-        parent: { database_id: dataSourceId },
+        parent: { 
+          type: 'data_source_id',
+          data_source_id: dataSourceId 
+        },
         properties,
         children: children.length > 0 ? children : undefined,
       };
@@ -442,13 +516,27 @@ class NotionService {
         case 'files':
           // For images uploaded to Notion or external images
           if (imagesMap && Object.keys(imagesMap).length > 0) {
-            const uploadedUrl = Object.values(imagesMap)[0];
+            const imageRef = Object.values(imagesMap)[0];
+            const isUuid = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(imageRef);
+            
+            if (isUuid) {
+              return {
+                files: [
+                  {
+                    name: 'image',
+                    type: 'file_upload',
+                    file_upload: { file_upload_id: imageRef },
+                  },
+                ],
+              };
+            }
+            
             return {
               files: [
                 {
                   name: 'image',
                   type: 'external',
-                  external: { url: uploadedUrl },
+                  external: { url: imageRef },
                 },
               ],
             };

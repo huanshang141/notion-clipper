@@ -77,6 +77,22 @@ export interface NotionProperty {
 }
 
 /**
+ * File Upload Data Structure
+ */
+export interface NotionFileUpload {
+  object: 'file_upload';
+  id: string;
+  created_time: string;
+  last_edited_time: string;
+  expiry_time: string | null;
+  filename: string;
+  content_type: string;
+  upload_url: string;
+  complete_url: string;
+  status: 'pending' | 'uploaded' | 'expired' | 'failed';
+}
+
+/**
  * Field mapping configuration
  * Maps extracted content fields to Notion database properties
  */

@@ -102,9 +102,9 @@ async function upload() {
   try {
     // Step A: Search for a database (Data Source)
     console.log('Searching for a database...');
-    // Trying standard 'database' filter first as 'data_source' might be incorrect or return pages that aren't databases
+    // In Notion API 2025-09-03, search for data_source objects
     const searchRes = await makeRequest('POST', '/v1/search', {
-      filter: { value: 'database', property: 'object' },
+      filter: { value: 'data_source', property: 'object' },
       page_size: 1,
     });
     
@@ -121,7 +121,10 @@ async function upload() {
 
     // Step B: Create Page
     const pagePayload = {
-      parent: { database_id: databaseId },
+      parent: { 
+        type: 'data_source_id',
+        data_source_id: databaseId 
+      },
       properties: {
         title: {
           title: [{ type: 'text', text: { content: `[TEST] ${article.title}` } }]
