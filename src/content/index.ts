@@ -4,17 +4,23 @@
  * Communicates with background script via chrome.runtime.sendMessage
  */
 
+console.log('[NotionClipper] Content script loaded');
+
 // Handle messages from background script
 chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
+  console.log('[NotionClipper] Content script received message:', message.action);
+  
   if (message.action === 'EXTRACT_PAGE_CONTENT') {
     extractPageContent()
       .then((article) => {
+        console.log('[NotionClipper] Content extracted successfully');
         sendResponse({
           success: true,
           article,
         });
       })
       .catch((error) => {
+        console.error('[NotionClipper] Content extraction error:', error);
         sendResponse({
           success: false,
           error: error instanceof Error ? error.message : 'Extraction failed',
@@ -31,20 +37,35 @@ chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
  */
 async function extractPageContent(): Promise<any> {
   try {
-    // Dynamically import Readability
-    // Note: We'll bundle this with the extension
-    const { Readability } = await importReadability();
+    console.log('[NotionClipper] Starting content extraction...');
+    
+    // Import Readability from global scope (injected by webpack bundle)
+    if (typeof (window as any).Readability === 'undefined') {
+      console.warn('[NotionClipper] Readability not found in window, attempting to load...');
+      // Try to get Readability from the page context
+      const Readability = await loadReadability();
+      if (!Readability) {
+        throw new Error('Readability library not available');
+      }
+      (window as any).Readability = Readability;
+    }
 
     // Clone the document to avoid mutating the original
     const clonedDoc = document.cloneNode(true) as Document;
 
     // Use Readability to extract content
+    const Readability = (window as any).Readability;
     const reader = new Readability(clonedDoc);
     const article = reader.parse();
 
     if (!article) {
-      throw new Error('Could not extract article');
+      throw new Error('Could not parse article content');
     }
+
+    console.log('[NotionClipper] Article parsed:', {
+      title: article.title,
+      contentLength: article.content?.length,
+    });
 
     // Extract images from the original HTML
     const images = extractImages();
@@ -57,7 +78,7 @@ async function extractPageContent(): Promise<any> {
     // Full implementation would use turndown library
     const content = article.content;
 
-    return {
+    const result = {
       title: article.title || document.title || 'Untitled',
       content,
       url: window.location.href,
@@ -68,37 +89,53 @@ async function extractPageContent(): Promise<any> {
       publishDate: metadata.publishDate,
       authorName: metadata.authorName,
     };
+
+    console.log('[NotionClipper] Extraction result:', {
+      title: result.title,
+      contentLength: content?.length,
+      imagesCount: images.length,
+      mainImage: !!mainImage,
+    });
+
+    return result;
   } catch (error) {
-    console.error('Content extraction error:', error);
+    console.error('[NotionClipper] Content extraction error:', error);
     throw error;
   }
 }
 
 /**
- * Import Readability library
- * In the bundled extension, this will be available
+ * Load Readability library with fallback
  */
-async function importReadability(): Promise<any> {
-  // Check if Readability is already loaded
-  if ((window as any).Readability) {
-    return { Readability: (window as any).Readability };
-  }
+async function loadReadability(): Promise<any> {
+  try {
+    // Check if Readability is already available globally
+    if ((window as any).Readability) {
+      return (window as any).Readability;
+    }
 
-  // For now, provide a simple fallback
-  // In full implementation, we'll bundle @mozilla/readability
-  return {
-    Readability: class {
-      constructor(doc: Document) {}
+    // Try to create a minimal Readability clone for DOM extraction
+    // This is a fallback when the full library isn't available
+    return class SimpleReadability {
+      content: any;
+      constructor(doc: Document, options?: any) {
+        this.content = doc.body.innerHTML;
+      }
       parse() {
         return {
           title: document.title,
-          content: document.body.innerHTML,
+          content: this.content,
           excerpt: '',
+          byline: '',
         };
       }
-    },
-  };
+    };
+  } catch (error) {
+    console.error('[NotionClipper] Failed to load Readability:', error);
+    return null;
+  }
 }
+
 
 /**
  * Extract images from the page

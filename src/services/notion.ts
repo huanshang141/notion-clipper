@@ -308,15 +308,28 @@ class NotionService {
         for (let i = 0; i < Math.min(article.images.length, imageLimit); i++) {
           const img = article.images[i];
           if (img && img.src) {
+            // Use uploaded URL if available, otherwise use original
+            const imageUrl = imagesWithUrls?.[img.src] || img.src;
+            
+            // Determine if URL is data URI (for embedded images)
+            const isDataUri = imageUrl.startsWith('data:');
+            
             children.push({
               object: 'block',
               type: 'image',
-              image: {
-                type: 'external',
-                external: {
-                  url: img.src,
-                },
-              },
+              image: isDataUri
+                ? {
+                    type: 'external',
+                    external: {
+                      url: imageUrl,
+                    },
+                  }
+                : {
+                    type: 'external',
+                    external: {
+                      url: imageUrl,
+                    },
+                  },
             });
           }
         }

@@ -4,7 +4,7 @@
  */
 
 import { MESSAGE_ACTIONS } from '../utils/constants';
-import { sendToContentScript } from '../utils/ipc';
+import { sendToContentScript, getActiveTab } from '../utils/ipc';
 import AuthService from '../services/auth';
 import NotionService from '../services/notion';
 import ExtractService from '../services/extract';
@@ -18,10 +18,18 @@ import {
   GetDatabaseSchemaResponse,
 } from '../types';
 
+console.log('[NotionClipper Background] Service Worker initialized');
+
 /**
  * Listen for messages from popup, content script, and options page
  */
 chrome.runtime.onMessage.addListener((message: ChromeMessage, sender, sendResponse) => {
+  console.log('[NotionClipper Background] Message received:', {
+    action: message.action,
+    senderUrl: sender.url,
+    senderId: sender.id,
+  });
+  
   // Handle each message type
   switch (message.action) {
     case MESSAGE_ACTIONS.EXTRACT_CONTENT:
@@ -46,6 +54,10 @@ chrome.runtime.onMessage.addListener((message: ChromeMessage, sender, sendRespon
 
     case MESSAGE_ACTIONS.GET_DATABASE_SCHEMA:
       handleGetDatabaseSchema(message, sender, sendResponse);
+      return true;
+
+    case MESSAGE_ACTIONS.GET_AUTO_FIELD_MAPPING:
+      handleGetAutoFieldMapping(message, sender, sendResponse);
       return true;
 
     case MESSAGE_ACTIONS.SAVE_TO_NOTION:
@@ -95,14 +107,50 @@ async function handleExtractContent(
   sendResponse: (response: ExtractContentResponse) => void
 ) {
   try {
-    if (!sender.tab?.id) {
-      throw new Error('Invalid tab context');
+    console.log('[NotionClipper Background] Handling EXTRACT_CONTENT request');
+    
+    // Get the active tab (instead of relying on sender.tab which may be undefined from popup)
+    const activeTab = await getActiveTab();
+    
+    if (!activeTab?.id) {
+      throw new Error('No active tab found');
     }
 
-    // Send extraction request to content script
-    const contentResponse: any = await sendToContentScript(sender.tab.id, {
-      action: 'EXTRACT_PAGE_CONTENT',
-    });
+    console.log('[NotionClipper Background] Active tab ID:', activeTab.id);
+
+    // Try to send extraction request to content script with retry logic
+    let contentResponse: any;
+    let retries = 3;
+    let lastError: any;
+
+    while (retries > 0) {
+      try {
+        console.log(`[NotionClipper Background] Attempting content script communication (${4 - retries}/3)...`);
+        contentResponse = await Promise.race([
+          sendToContentScript(activeTab.id, {
+            action: 'EXTRACT_PAGE_CONTENT',
+          }),
+          new Promise((_, reject) => 
+            setTimeout(() => reject(new Error('Content script communication timeout')), 10000)
+          ),
+        ]);
+        console.log('[NotionClipper Background] Content script responded successfully');
+        break;
+      } catch (error) {
+        lastError = error;
+        console.warn(`[NotionClipper Background] Content script communication failed (attempt ${4 - retries}):`, error);
+        retries--;
+        
+        if (retries > 0) {
+          // Wait before retrying
+          await new Promise(resolve => setTimeout(resolve, 500));
+        }
+      }
+    }
+
+    if (!contentResponse) {
+      throw lastError || new Error('Failed to communicate with content script after 3 attempts');
+    }
 
     if (!contentResponse.success) {
       throw new Error(contentResponse.error || 'Failed to extract content');
@@ -111,11 +159,17 @@ async function handleExtractContent(
     // The content script returns the extracted article
     const article = contentResponse.article;
 
-    // Ensure content is in Markdown format
+    console.log('[NotionClipper Background] Article received:', {
+      title: article.title,
+      contentLength: article.content?.length,
+      imagesCount: article.images?.length,
+    });
+
+    // Content is expected to be in HTML from Readability, convert to Markdown if needed
     let markdown = article.content;
     if (article.content?.includes('<')) {
-      // If HTML is returned, convert to Markdown via Readability
-      // For now, use HTML as-is in a code block
+      // HTML content - use Turndown to convert to Markdown
+      // For now, keep as HTML in code block as fallback
       markdown = `${'```'}html\n${article.content}\n${'```'}`;
     }
 
@@ -127,7 +181,7 @@ async function handleExtractContent(
       },
     });
   } catch (error) {
-    console.error('Extraction error:', error);
+    console.error('[NotionClipper Background] Extraction error:', error);
     sendResponse({
       success: false,
       error: error instanceof Error ? error.message : 'Extraction failed',
@@ -249,6 +303,30 @@ async function handleGetDatabaseSchema(
     sendResponse({
       properties: [],
       error: error instanceof Error ? error.message : 'Failed to get database schema',
+    });
+  }
+}
+
+/**
+ * Get auto-detected field mapping for a database
+ */
+async function handleGetAutoFieldMapping(
+  message: ChromeMessage,
+  sender: chrome.runtime.MessageSender,
+  sendResponse: (response: { fieldMapping?: Record<string, any>; error?: string }) => void
+) {
+  try {
+    const databaseId = message.data?.databaseId;
+    if (!databaseId) {
+      throw new Error('Database ID is required');
+    }
+
+    const fieldMapping = await NotionService.autoDetectFieldMapping(databaseId);
+    sendResponse({ fieldMapping });
+  } catch (error) {
+    console.error('Get auto field mapping error:', error);
+    sendResponse({
+      error: error instanceof Error ? error.message : 'Failed to get field mapping',
     });
   }
 }

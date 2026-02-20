@@ -68,10 +68,14 @@ export default function App() {
         loadDatabases();
       }
     } catch (error) {
+      console.error('Auth status check error:', error);
       setState((prev) => ({
         ...prev,
         isCheckingAuth: false,
-        message: 'Failed to check auth status',
+        message:
+          error instanceof Error
+            ? error.message
+            : 'Failed to check authentication status',
         messageType: 'error',
       }));
     }
@@ -119,14 +123,27 @@ export default function App() {
   };
 
   const extractContent = async () => {
+    console.log('[NotionClipper Popup] Starting content extraction...');
     setState((prev) => ({ ...prev, isExtracting: true }));
 
     try {
+      console.log('[NotionClipper Popup] Sending EXTRACT_CONTENT message to background');
       const response = await sendToBackground({
         action: 'EXTRACT_CONTENT',
       });
 
+      console.log('[NotionClipper Popup] Background response received:', {
+        success: response.success,
+        hasArticle: !!response.article,
+        error: response.error,
+      });
+
       if (response.success && response.article) {
+        console.log('[NotionClipper Popup] Content extracted successfully:', {
+          title: response.article.title,
+          contentLength: response.article.content?.length,
+          imagesCount: response.article.images?.length,
+        });
         setState((prev) => ({
           ...prev,
           article: response.article,
@@ -137,9 +154,11 @@ export default function App() {
         throw new Error(response.error || 'Extraction failed');
       }
     } catch (error) {
+      console.error('[NotionClipper Popup] Content extraction error:', error);
+      const errorMessage = error instanceof Error ? error.message : 'Failed to extract content';
       setState((prev) => ({
         ...prev,
-        message: error instanceof Error ? error.message : 'Failed to extract content',
+        message: errorMessage,
         messageType: 'error',
       }));
     } finally {

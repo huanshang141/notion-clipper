@@ -68,22 +68,22 @@ class ImageService {
 
   /**
    * Upload image to Notion
-   * Returns the uploaded file URL
+   * For MVP: Use external URL if available, otherwise convert to data URI
+   * In future: Implement proper Notion file upload via API
    */
   async uploadImageToNotion(blob: Blob, filename: string): Promise<string> {
     try {
-      // For MVP, we use Notion's S3 upload mechanism
-      // This is a simplified version - full implementation would need proper signing
+      // For now, convert blob to data URI for storage in Notion
+      // This allows offline viewing but increases page payload
+      // Future implementation should:
+      // 1. Upload to Notion's S3 bucket
+      // 2. Or upload to external CDN (Cloudinary, Imgix, etc.)
+      // 3. Or store reference with lazy loading
 
-      // Step 1: Get signed upload URL from Notion
-      // This is handled by Notion when creating a page with file blocks
-
-      // Step 2: Upload the file to the signed URL
-      // This is done in the page creation process
-
-      // For now, return placeholder - this will be integrated into page creation
-      throw new Error('Direct image upload not yet fully implemented in MVP');
+      const dataUri = await this.blobToDataUri(blob);
+      return dataUri;
     } catch (error) {
+      console.error('Failed to upload image to Notion:', error);
       throw new Error(`Failed to upload image: ${error}`);
     }
   }
@@ -167,16 +167,24 @@ class ImageService {
 
     const uploadedUrls: Record<string, string> = {};
 
-    // For MVP, we keep track of downloaded images
-    // In full implementation, these would be uploaded to Notion
-    for (const [src, blob] of results) {
+    // For MVP: Use original URL if download fails
+    // Upload downloaded images as data URIs for direct embedding
+    for (const img of images) {
       try {
-        // For MVP: store the blob reference
-        // In production: upload to Notion and get back the public URL
-        uploadedUrls[src] = src; // Fallback to original URL for now
+        if (results.has(img.src)) {
+          const blob = results.get(img.src)!;
+          // Upload the blob and get a URL (data URI for MVP)
+          const uploadedUrl = await this.uploadImageToNotion(blob, `image-${Date.now()}`);
+          uploadedUrls[img.src] = uploadedUrl;
+        } else if (errors.has(img.src)) {
+          // Fall back to original URL if download failed
+          console.warn(`Failed to download ${img.src}, using original URL`);
+          uploadedUrls[img.src] = img.src;
+        }
       } catch (error) {
-        console.error(`Failed to upload image ${src}:`, error);
-        uploadedUrls[src] = src; // Keep original URL as fallback
+        console.error(`Failed to process image ${img.src}:`, error);
+        // Use original URL as final fallback
+        uploadedUrls[img.src] = img.src;
       }
     }
 
