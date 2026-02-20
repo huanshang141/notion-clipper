@@ -48,7 +48,7 @@ class NotionService {
         '/search',
         {
           filter: {
-            value: 'data_source',  // Changed from 'database' to 'data_source'
+            value: 'database',  // Reverted to 'database' as 'data_source' is non-standard
             property: 'object',
           },
           sort: {
@@ -314,6 +314,12 @@ class NotionService {
             // Determine if URL is data URI (for embedded images)
             const isDataUri = imageUrl.startsWith('data:');
             
+            // Validate URL length (Notion API limit is 2000 characters)
+            if (imageUrl.length > 2000) {
+              console.warn(`[NotionService] Image URL too long (${imageUrl.length} chars). Skipping image.`);
+              continue;
+            }
+
             children.push({
               object: 'block',
               type: 'image',
@@ -332,19 +338,23 @@ class NotionService {
       let icon: any = undefined;
       // Use favicon if available and is a valid URL (not data URI if too long, but we'll try)
       if (article.favicon && article.favicon.startsWith('http')) {
-        icon = {
-          type: 'external',
-          external: { url: article.favicon },
-        };
+        if (article.favicon.length <= 2000) {
+          icon = {
+            type: 'external',
+            external: { url: article.favicon },
+          };
+        }
       }
 
       let cover: any = undefined;
       // Use mainImage as cover
       if (article.mainImage && article.mainImage.startsWith('http')) {
-        cover = {
-          type: 'external',
-          external: { url: article.mainImage },
-        };
+        if (article.mainImage.length <= 2000) {
+          cover = {
+            type: 'external',
+            external: { url: article.mainImage },
+          };
+        }
       }
 
       // Create the page using database_id (standard API)
