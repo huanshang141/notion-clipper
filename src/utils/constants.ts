@@ -4,7 +4,7 @@
 
 // Notion API Configuration
 export const NOTION_API_BASE = 'https://api.notion.com/v1';
-export const NOTION_API_VERSION = '2024-02-15';
+export const NOTION_API_VERSION = '2025-09-03';
 
 // OAuth Configuration (需要在注册完应用后填入)
 export const OAUTH_CONFIG = {
@@ -18,6 +18,7 @@ export const MESSAGE_ACTIONS = {
   EXTRACT_CONTENT: 'EXTRACT_CONTENT',
   SAVE_TO_NOTION: 'SAVE_TO_NOTION',
   GET_AUTH_STATUS: 'GET_AUTH_STATUS',
+  AUTHENTICATE: 'AUTHENTICATE',
   LOGOUT: 'LOGOUT',
   GET_DATABASES: 'GET_DATABASES',
   GET_DATABASE_SCHEMA: 'GET_DATABASE_SCHEMA',
@@ -47,13 +48,14 @@ export const DEFAULT_NOTION_FIELD_TYPES = {
 
 // Common field name patterns for auto-detection
 export const COMMON_FIELD_NAMES = {
-  TITLE: ['title', 'name', 'heading', '标题'],
-  CONTENT: ['content', 'body', 'article', 'text', '内容', '正文'],
-  URL: ['url', 'link', 'source', 'uri', '链接', '网址'],
-  COVER: ['cover', 'image', 'main_image', 'thumbnail', '封面', '图片'],
-  TAG: ['tag', 'tags', 'category', 'categories', '标签', '分类'],
-  AUTHOR: ['author', 'username', 'creator', '作者'],
-  DATE: ['date', 'published_date', 'create_date', '日期'],
+  TITLE: ['title', 'name', 'heading', '标题', 'headline', 'subject', 'topic'],
+  CONTENT: ['content', 'body', 'article', 'text', '内容', '正文', 'description', 'description', 'body_text', 'body_html'],
+  URL: ['url', 'link', 'source', 'uri', '链接', '网址', 'page_url', 'web_url', 'page_link', 'ref'],
+  COVER: ['cover', 'image', 'main_image', 'thumbnail', '封面', '图片', 'featured_image', 'hero_image', 'og_image'],
+  TAG: ['tag', 'tags', 'category', 'categories', '标签', '分类', 'keywords', 'topic', 'subject'],
+  AUTHOR: ['author', 'username', 'creator', '作者', 'writer', 'by_line', 'byline', 'publisher'],
+  DATE: ['date', 'published_date', 'create_date', '日期', 'publish_time', 'publish_date', 'pub_date', 'posted_at', 'created_at'],
+  EXCERPT: ['excerpt', 'summary', '摘要', 'abstract', 'description', 'preview'],
 } as const;
 
 // UI Constants

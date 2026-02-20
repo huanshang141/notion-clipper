@@ -12,6 +12,7 @@ export default function SettingsPage() {
   const [token, setToken] = useState<NotionAuthToken | null>(null);
   const [apiKey, setApiKey] = useState('');
   const [isConnecting, setIsConnecting] = useState(false);
+  const [isTesting, setIsTesting] = useState(false);
   const [message, setMessage] = useState('');
   const [messageType, setMessageType] = useState<'success' | 'error' | 'info'>('info');
   const [autoDownloadImages, setAutoDownloadImages] = useState(true);
@@ -40,42 +41,32 @@ export default function SettingsPage() {
     e.preventDefault();
 
     if (!apiKey.trim()) {
-      showMessage('Please enter an API key', 'error');
+      showMessage('请输入 API Key', 'error');
       return;
     }
 
     setIsConnecting(true);
 
     try {
-      // Try to connect with the API key
-      const response = await fetch('https://api.notion.com/v1/users/me', {
-        method: 'GET',
-        headers: {
-          'Authorization': `Bearer ${apiKey}`,
-          'Notion-Version': '2024-02-15',
-        },
+      // Send authentication request to background script
+      const response = await sendToBackground({
+        action: 'AUTHENTICATE',
+        data: { apiKey: apiKey.trim() },
       });
 
-      if (!response.ok) {
-        throw new Error('Invalid API key');
+      if (response.success) {
+        await loadSettings();
+        setApiKey('');
+        showMessage('API Key 导入成功', 'success');
+      } else {
+        showMessage(
+          response.error || 'API Key 验证失败，请检查是否正确',
+          'error'
+        );
       }
-
-      const data = await response.json();
-      const newToken: NotionAuthToken = {
-        accessToken: apiKey,
-        tokenType: 'bearer',
-        workspaceName: data.workspace?.name || 'My Workspace',
-        workspaceId: data.workspace_id,
-      };
-
-      await StorageService.setAuthToken(newToken);
-      setToken(newToken);
-      setApiKey('');
-
-      showMessage('API key successfully imported', 'success');
     } catch (error) {
       showMessage(
-        error instanceof Error ? error.message : 'Failed to import API key',
+        error instanceof Error ? error.message : '导入失败',
         'error'
       );
     } finally {
@@ -87,12 +78,49 @@ export default function SettingsPage() {
     try {
       await sendToBackground({ action: 'LOGOUT' });
       setToken(null);
-      showMessage('Logged out successfully', 'success');
+      showMessage('成功退出登录', 'success');
     } catch (error) {
       showMessage(
-        error instanceof Error ? error.message : 'Failed to logout',
+        error instanceof Error ? error.message : '退出登录失败',
         'error'
       );
+    }
+  };
+
+  const handleTestConnection = async () => {
+    if (!token) {
+      showMessage('请先验证 API Key', 'error');
+      return;
+    }
+
+    setIsTesting(true);
+
+    try {
+      // Test by fetching user info
+      const response = await fetch('https://api.notion.com/v1/users/me', {
+        method: 'GET',
+        headers: {
+          'Authorization': `Bearer ${token.accessToken}`,
+          'Notion-Version': '2025-09-03',
+        },
+      });
+
+      if (!response.ok) {
+        throw new Error(`连接失败: ${response.status}`);
+      }
+
+      const data = await response.json();
+      showMessage(
+        `✓ 连接成功！工作区: ${data.workspace_name || 'Unknown'}`,
+        'success'
+      );
+    } catch (error) {
+      showMessage(
+        error instanceof Error ? error.message : '连接测试失败',
+        'error'
+      );
+    } finally {
+      setIsTesting(false);
     }
   };
 
@@ -139,14 +167,24 @@ export default function SettingsPage() {
           {token ? (
             <div className="auth-status">
               <div className="auth-info">
-                <p className="auth-status-ok">✓ Connected</p>
+                <p className="auth-status-ok">✓ 已连接</p>
                 <p className="workspace-name">
-                  Workspace: <strong>{token.workspaceName}</strong>
+                  工作区: <strong>{token.workspaceName}</strong>
                 </p>
               </div>
-              <button onClick={handleLogout} className="btn-logout">
-                Logout
-              </button>
+              <div className="auth-actions">
+                <button
+                  type="button"
+                  onClick={handleTestConnection}
+                  disabled={isTesting}
+                  className="btn-test"
+                >
+                  {isTesting ? '测试中...' : '测试连接'}
+                </button>
+                <button onClick={handleLogout} className="btn-logout">
+                  退出登录
+                </button>
+              </div>
             </div>
           ) : (
             <form onSubmit={handleImportApiKey} className="api-key-form">

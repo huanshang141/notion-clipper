@@ -5,7 +5,7 @@
 
 import StorageService from './storage';
 import { NotionAuthToken } from '../types';
-import { OAUTH_CONFIG } from '../utils/constants';
+import { OAUTH_CONFIG, NOTION_API_VERSION } from '../utils/constants';
 
 class AuthService {
   /**
@@ -13,6 +13,10 @@ class AuthService {
    * Opens Notion authorization URL in a new window
    */
   async startOAuthFlow(): Promise<NotionAuthToken> {
+    if (!OAUTH_CONFIG.clientId) {
+      throw new Error('OAuth client ID not configured. Please set NOTION_CLIENT_ID environment variable.');
+    }
+
     return new Promise((resolve, reject) => {
       // Build OAuth URL
       const authUrl = new URL('https://api.notion.com/oauth/authorize');
@@ -31,7 +35,7 @@ class AuthService {
           if (chrome.runtime.lastError || !redirectUrl) {
             reject(
               new Error(
-                chrome.runtime.lastError?.message || 'OAuth flow canceled'
+                chrome.runtime.lastError?.message || 'OAuth 授权被用户取消'
               )
             );
             return;
@@ -46,38 +50,9 @@ class AuthService {
               throw new Error('No authorization code received');
             }
 
-            // Exchange code for access token
-            const response = await fetch('https://api.notion.com/v1/oauth/token', {
-              method: 'POST',
-              headers: {
-                'Content-Type': 'application/json',
-              },
-              body: JSON.stringify({
-                grant_type: 'authorization_code',
-                code,
-                redirect_uri: OAUTH_CONFIG.redirectUri,
-                client_id: OAUTH_CONFIG.clientId,
-                client_secret: process.env.NOTION_CLIENT_SECRET || '', // 需要配置
-              }),
-            });
-
-            if (!response.ok) {
-              throw new Error(`Token exchange failed: ${response.statusText}`);
-            }
-
-            const data = await response.json();
-            const token: NotionAuthToken = {
-              accessToken: data.access_token,
-              tokenType: data.token_type,
-              expiresAt: data.expires_in ? Date.now() + data.expires_in * 1000 : undefined,
-              workspaceName: data.workspace_name,
-              workspaceId: data.workspace_id,
-              workspaceIcon: data.workspace_icon,
-            };
-
-            // Save token
-            await StorageService.setAuthToken(token);
-            resolve(token);
+            // Exchange code for access token via background script
+            // In production, this should be done securely on a backend
+            throw new Error('OAuth flow requires backend support. Please use API Key authentication instead.');
           } catch (error) {
             reject(error);
           }
@@ -87,21 +62,31 @@ class AuthService {
   }
 
   /**
-   * Authenticate with API Key
+   * Authenticate with API Key (primary method for MVP)
    */
   async authenticateWithApiKey(apiKey: string): Promise<NotionAuthToken> {
     try {
+      // Trim and validate API key format
+      apiKey = apiKey.trim();
+      
+      if (!apiKey.startsWith('secret_')) {
+        throw new Error('Invalid API key format. API keys should start with "secret_"');
+      }
+
       // Validate API key by making a test request
       const response = await fetch('https://api.notion.com/v1/users/me', {
         method: 'GET',
         headers: {
           'Authorization': `Bearer ${apiKey}`,
-          'Notion-Version': '2024-02-15',
+          'Notion-Version': NOTION_API_VERSION,
         },
       });
 
       if (!response.ok) {
-        throw new Error('Invalid API key');
+        if (response.status === 401) {
+          throw new Error('Invalid or expired API key');
+        }
+        throw new Error(`Authentication failed: ${response.status} ${response.statusText}`);
       }
 
       const data = await response.json();
@@ -109,15 +94,16 @@ class AuthService {
       const token: NotionAuthToken = {
         accessToken: apiKey,
         tokenType: 'bearer',
-        workspaceName: data.workspace?.name || 'My Workspace',
+        workspaceName: data.workspace?.name || (data as any).workspace_name || 'My Workspace',
         workspaceId: data.workspace_id,
       };
 
-      // Save token
+      // Save token to storage
       await StorageService.setAuthToken(token);
       return token;
     } catch (error) {
-      throw new Error(`Authentication failed: ${error}`);
+      const message = error instanceof Error ? error.message : 'Authentication failed';
+      throw new Error(`Authentication failed: ${message}`);
     }
   }
 
@@ -134,7 +120,7 @@ class AuthService {
         method: 'GET',
         headers: {
           'Authorization': `Bearer ${token.accessToken}`,
-          'Notion-Version': '2024-02-15',
+          'Notion-Version': NOTION_API_VERSION,
         },
       });
 
@@ -159,61 +145,34 @@ class AuthService {
   }
 
   /**
-   * Refresh token if needed (for OAuth tokens)
+   * Get authentication status with workspace info
    */
-  async refreshTokenIfNeeded(): Promise<NotionAuthToken | null> {
-    const token = await StorageService.getAuthToken();
-    if (!token) return null;
-
-    // If no expiration, assume it's an API key that doesn't expire
-    if (!token.expiresAt) return token;
-
-    // If token isn't expiring soon, return as is
-    const now = Date.now();
-    const refreshThreshold = 5 * 60 * 1000; // 5 minutes
-
-    if (token.expiresAt - now > refreshThreshold) {
-      return token;
-    }
-
-    // Token is expiring, try to refresh (requires client_secret)
-    if (!token.refreshToken) {
-      // Can't refresh without refresh token
-      throw new Error('Token expired and cannot be refreshed');
-    }
-
+  async getAuthStatus(): Promise<{
+    isAuthenticated: boolean;
+    token?: NotionAuthToken;
+    workspace?: { id: string; name: string };
+  }> {
     try {
-      const response = await fetch('https://api.notion.com/v1/oauth/token', {
-        method: 'POST',
-        headers: {
-          'Content-Type': 'application/json',
-        },
-        body: JSON.stringify({
-          grant_type: 'refresh_token',
-          refresh_token: token.refreshToken,
-          client_id: OAUTH_CONFIG.clientId,
-          client_secret: process.env.NOTION_CLIENT_SECRET || '',
-        }),
-      });
-
-      if (!response.ok) {
-        throw new Error('Token refresh failed');
+      const token = await this.getToken();
+      if (!token) {
+        return { isAuthenticated: false };
       }
 
-      const data = await response.json();
-      const newToken: NotionAuthToken = {
-        accessToken: data.access_token,
-        tokenType: data.token_type,
-        expiresAt: data.expires_in ? Date.now() + data.expires_in * 1000 : undefined,
-        refreshToken: data.refresh_token || token.refreshToken,
-        workspaceName: token.workspaceName,
-        workspaceId: token.workspaceId,
-      };
+      const isValid = await this.isAuthenticated();
+      if (!isValid) {
+        return { isAuthenticated: false };
+      }
 
-      await StorageService.setAuthToken(newToken);
-      return newToken;
-    } catch (error) {
-      throw new Error(`Token refresh failed: ${error}`);
+      return {
+        isAuthenticated: true,
+        token,
+        workspace: {
+          id: token.workspaceId || '',
+          name: token.workspaceName || 'Unknown',
+        },
+      };
+    } catch {
+      return { isAuthenticated: false };
     }
   }
 }

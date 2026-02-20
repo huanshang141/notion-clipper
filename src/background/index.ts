@@ -28,6 +28,10 @@ chrome.runtime.onMessage.addListener((message: ChromeMessage, sender, sendRespon
       handleExtractContent(message, sender, sendResponse);
       return true;
 
+    case MESSAGE_ACTIONS.AUTHENTICATE:
+      handleAuthenticate(message, sender, sendResponse);
+      return true;
+
     case MESSAGE_ACTIONS.GET_AUTH_STATUS:
       handleGetAuthStatus(message, sender, sendResponse);
       return true;
@@ -52,6 +56,35 @@ chrome.runtime.onMessage.addListener((message: ChromeMessage, sender, sendRespon
       return false;
   }
 });
+
+/**
+ * Authenticate user with API Key
+ */
+async function handleAuthenticate(
+  message: ChromeMessage,
+  sender: chrome.runtime.MessageSender,
+  sendResponse: (response: { success: boolean; token?: any; error?: string }) => void
+) {
+  try {
+    const apiKey = message.data?.apiKey;
+    if (!apiKey) {
+      throw new Error('API key is required');
+    }
+
+    const token = await AuthService.authenticateWithApiKey(apiKey);
+
+    sendResponse({
+      success: true,
+      token,
+    });
+  } catch (error) {
+    console.error('Authentication error:', error);
+    sendResponse({
+      success: false,
+      error: error instanceof Error ? error.message : 'Authentication failed',
+    });
+  }
+}
 
 /**
  * Extract content from the current tab
