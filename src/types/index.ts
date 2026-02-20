@@ -7,7 +7,10 @@
  */
 export interface ExtractedArticle {
   title: string;
-  content: string; // Markdown format
+  content: string; // Markdown format (final content for Notion upload)
+  rawHtml?: string; // Raw/extracted HTML for live editable preview
+  contentFormat?: 'markdown' | 'html';
+  extractionStrategy?: 'readability' | 'fallback-main-content' | 'fallback-body';
   url: string;
   mainImage?: string; // URL or data URI for the main image
   favicon?: string;   // Page favicon

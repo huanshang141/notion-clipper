@@ -205,8 +205,8 @@ export default function App() {
     loadDatabaseSchema(databaseId);
   };
 
-  const handleSave = async (fieldMapping: Record<string, any>) => {
-    if (!state.article || !state.selectedDatabaseId) {
+  const handleSave = async (fieldMapping: Record<string, any>, articleToSave: ExtractedArticle) => {
+    if (!articleToSave || !state.selectedDatabaseId) {
       return;
     }
 
@@ -216,7 +216,7 @@ export default function App() {
       const response = await sendToBackground({
         action: 'SAVE_TO_NOTION',
         data: {
-          article: state.article,
+          article: articleToSave,
           databaseId: state.selectedDatabaseId,
           fieldMapping,
           shouldDownloadImages: true,

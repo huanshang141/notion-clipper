@@ -195,20 +195,9 @@ async function handleExtractContent(
       imagesCount: article.images?.length,
     });
 
-    // Content is expected to be in HTML from Readability, convert to Markdown if needed
-    let markdown = article.content;
-    if (article.content?.includes('<')) {
-      // HTML content - use Turndown to convert to Markdown
-      // For now, keep as HTML in code block as fallback
-      markdown = `${'```'}html\n${article.content}\n${'```'}`;
-    }
-
     sendResponse({
       success: true,
-      article: {
-        ...article,
-        content: markdown,
-      },
+      article,
     });
   } catch (error) {
     console.error('[NotionClipper Background] Extraction error:', error);

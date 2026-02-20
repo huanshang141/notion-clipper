@@ -59,18 +59,12 @@ async function extractPageContent(): Promise<any> {
       }
     });
 
-    // Use Readability to extract content
-    // We instantiate it directly since we imported it
-    const reader = new Readability(clonedDoc);
-    const article = reader.parse();
-
-    if (!article) {
-      throw new Error('Could not parse article content');
-    }
+    const extractionResult = extractSmartContent(clonedDoc);
 
     console.log('[NotionClipper] Article parsed:', {
-      title: article.title,
-      contentLength: article.content?.length,
+      title: extractionResult.title,
+      contentLength: extractionResult.html?.length,
+      strategy: extractionResult.strategy,
     });
 
     // Convert HTML content to Markdown
@@ -82,7 +76,7 @@ async function extractPageContent(): Promise<any> {
     // Configure turndown to ignore scripts and styles if any remain
     turndownService.remove(['script', 'style']);
 
-    const markdownContent = turndownService.turndown(article.content);
+    const markdownContent = turndownService.turndown(extractionResult.html);
 
     // Extract original images from the page (for uploading)
     const pageImages = extractImages();
@@ -93,13 +87,16 @@ async function extractPageContent(): Promise<any> {
     const metadata = extractMetadata();
 
     const result = {
-      title: article.title || document.title || 'Untitled',
-      content: markdownContent, // Send Markdown instead of HTML
+      title: extractionResult.title || document.title || 'Untitled',
+      content: markdownContent,
+      rawHtml: extractionResult.html,
+      contentFormat: 'markdown',
+      extractionStrategy: extractionResult.strategy,
       url: window.location.href,
       mainImage,
       favicon,
       images: pageImages,
-      excerpt: article.excerpt,
+      excerpt: extractionResult.excerpt,
       domain: new URL(window.location.href).hostname,
       publishDate: metadata.publishDate,
       authorName: metadata.authorName,
@@ -117,6 +114,37 @@ async function extractPageContent(): Promise<any> {
     console.error('[NotionClipper] Content extraction error:', error);
     throw error;
   }
+}
+
+function extractSmartContent(
+  doc: Document
+): { title: string; html: string; excerpt?: string; strategy: 'readability' | 'fallback-main-content' | 'fallback-body' } {
+  const reader = new Readability(doc);
+  const article = reader.parse();
+
+  if (article?.content?.trim()) {
+    return {
+      title: article.title || doc.title || 'Untitled',
+      html: article.content,
+      excerpt: article.excerpt || undefined,
+      strategy: 'readability',
+    };
+  }
+
+  const mainContent = doc.querySelector('main, article, .post-content, .article-content, .entry-content, [role="main"]');
+  if (mainContent?.innerHTML?.trim()) {
+    return {
+      title: doc.title || 'Untitled',
+      html: mainContent.innerHTML,
+      strategy: 'fallback-main-content',
+    };
+  }
+
+  return {
+    title: doc.title || 'Untitled',
+    html: doc.body?.innerHTML || '',
+    strategy: 'fallback-body',
+  };
 }
 
 /**

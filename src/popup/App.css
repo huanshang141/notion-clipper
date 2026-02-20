@@ -286,6 +286,34 @@ body {
   font-size: 13px;
 }
 
+.live-editor-grid {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 8px;
+}
+
+.live-editor-textarea {
+  min-height: 200px;
+  resize: vertical;
+  font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, 'Liberation Mono', 'Courier New', monospace;
+  font-size: 12px;
+}
+
+.live-editor-preview {
+  min-height: 200px;
+  max-height: 320px;
+  overflow: auto;
+  border: 1px solid var(--border-color);
+  border-radius: 4px;
+  padding: 10px;
+  background: #fafafa;
+}
+
+.live-editor-preview img {
+  max-width: 100%;
+  height: auto;
+}
+
 .schema-preview {
   margin: 16px 0;
   padding: 12px;

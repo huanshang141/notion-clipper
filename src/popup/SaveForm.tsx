@@ -4,6 +4,7 @@
  */
 
 import React, { useState, useEffect } from 'react';
+import TurndownService from 'turndown';
 import { sendToBackground } from '../utils/ipc';
 import { ExtractedArticle, NotionDatabase, NotionProperty } from '../types';
 
@@ -24,8 +25,14 @@ interface SaveFormProps {
   databaseSchema?: NotionProperty[];
   isSaving: boolean;
   onDatabaseChange: (databaseId: string) => void;
-  onSave: (fieldMapping: Record<string, any>) => Promise<void>;
+  onSave: (fieldMapping: Record<string, any>, article: ExtractedArticle) => Promise<void>;
 }
+
+const turndownService = new TurndownService({
+  headingStyle: 'atx',
+  codeBlockStyle: 'fenced',
+});
+turndownService.remove(['script', 'style']);
 
 export default function SaveForm({
   article,
@@ -37,6 +44,8 @@ export default function SaveForm({
   onSave,
 }: SaveFormProps) {
   const [title, setTitle] = useState(article.title);
+  const [editedHtml, setEditedHtml] = useState(getInitialHtml(article));
+  const [previewHtml, setPreviewHtml] = useState(sanitizeHtml(getInitialHtml(article)));
   const [fieldMappings, setFieldMappings] = useState<Record<string, FieldMappingConfig>>({});
   const [isLoadingSchema, setIsLoadingSchema] = useState(false);
 
@@ -160,6 +169,13 @@ export default function SaveForm({
 
   const [fieldMapping, setFieldMapping] = useState<Record<string, any>>({});
 
+  useEffect(() => {
+    const initialHtml = getInitialHtml(article);
+    setTitle(article.title);
+    setEditedHtml(initialHtml);
+    setPreviewHtml(sanitizeHtml(initialHtml));
+  }, [article]);
+
   // Initialize field mapping from schema
   useEffect(() => {
     if (databaseSchema && databaseSchema.length > 0) {
@@ -282,28 +298,53 @@ export default function SaveForm({
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
 
+    const normalizedHtml = editedHtml.trim();
+    const finalArticle: ExtractedArticle = {
+      ...article,
+      title,
+      rawHtml: normalizedHtml,
+      content: normalizedHtml ? turndownService.turndown(normalizedHtml) : article.content,
+      contentFormat: 'markdown',
+    };
+
     // Build final field mapping with current values
     const finalMapping: Record<string, any> = {};
 
     for (const [propId, config] of Object.entries(fieldMappings)) {
       if (!config.isEnabled) continue;
 
-      // Update value if title field
-      if (config.propertyType === 'title' && config.sourceField === 'title') {
-        finalMapping[propId] = {
-          title: [
-            {
-              type: 'text',
-              text: { content: title },
-            },
-          ],
-        };
+      if (config.sourceField) {
+        const value = buildPropertyValueFromArticle(finalArticle, config.propertyType, config.sourceField);
+        if (value !== null) {
+          finalMapping[propId] = value;
+        }
       } else if (config.value !== null) {
         finalMapping[propId] = config.value;
       }
     }
 
-    await onSave(finalMapping);
+    await onSave(finalMapping, finalArticle);
+  };
+
+  const buildPropertyValueFromArticle = (
+    sourceArticle: ExtractedArticle,
+    propertyType: string,
+    sourceField?: string
+  ) => {
+    if (!sourceField) {
+      return null;
+    }
+
+    const value = (sourceArticle as any)[sourceField];
+    if (value === undefined && sourceField === 'title') {
+      return buildPropertyValue(propertyType, sourceArticle.title);
+    }
+    return buildPropertyValue(propertyType, value);
+  };
+
+  const handleHtmlChange = (nextHtml: string) => {
+    setEditedHtml(nextHtml);
+    setPreviewHtml(sanitizeHtml(nextHtml));
   };
 
   return (
@@ -344,6 +385,20 @@ export default function SaveForm({
           onChange={(e) => setTitle(e.target.value)}
           disabled={isSaving}
         />
+      </div>
+
+      <div className="form-group">
+        <label htmlFor="content-editor">Content (editable HTML with live preview)</label>
+        <div className="live-editor-grid">
+          <textarea
+            id="content-editor"
+            value={editedHtml}
+            onChange={(e) => handleHtmlChange(e.target.value)}
+            disabled={isSaving}
+            className="live-editor-textarea"
+          />
+          <div className="live-editor-preview" dangerouslySetInnerHTML={{ __html: previewHtml }} />
+        </div>
       </div>
 
       {/* Schema Fields Preview */}
@@ -388,4 +443,53 @@ export default function SaveForm({
       </div>
     </form>
   );
+}
+
+function getInitialHtml(article: ExtractedArticle): string {
+  if (article.rawHtml && article.rawHtml.trim()) {
+    return article.rawHtml;
+  }
+
+  const escaped = escapeHtml(article.content || '');
+  return escaped
+    .split('\n')
+    .filter((line) => line.trim())
+    .map((line) => `<p>${line}</p>`)
+    .join('');
+}
+
+function sanitizeHtml(html: string): string {
+  const parser = new DOMParser();
+  const doc = parser.parseFromString(html || '', 'text/html');
+  const blockedTags = ['script', 'style', 'iframe', 'object', 'embed', 'noscript'];
+
+  blockedTags.forEach((tag) => {
+    doc.querySelectorAll(tag).forEach((el) => el.remove());
+  });
+
+  doc.querySelectorAll('*').forEach((el) => {
+    Array.from(el.attributes).forEach((attr) => {
+      const name = attr.name.toLowerCase();
+      const value = attr.value.trim().toLowerCase();
+
+      if (name.startsWith('on')) {
+        el.removeAttribute(attr.name);
+      }
+
+      if ((name === 'src' || name === 'href') && value.startsWith('javascript:')) {
+        el.removeAttribute(attr.name);
+      }
+    });
+  });
+
+  return doc.body.innerHTML;
+}
+
+function escapeHtml(input: string): string {
+  return input
+    .replace(/&/g, '&amp;')
+    .replace(/</g, '&lt;')
+    .replace(/>/g, '&gt;')
+    .replace(/"/g, '&quot;')
+    .replace(/'/g, '&#39;');
 }
