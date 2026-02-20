@@ -14,19 +14,26 @@ export default function LoginForm({ onSubmit }: LoginFormProps) {
   const [error, setError] = useState('');
 
   const handleSubmit = async (e: React.FormEvent) => {
+    console.log('LoginForm handleSubmit called');
     e.preventDefault();
+    console.log('API Key:', apiKey.substring(0, 20) + '...');
 
     if (!apiKey.trim()) {
+      console.log('API Key is empty');
       setError('Please enter an API key');
       return;
     }
 
     setIsLoading(true);
     setError('');
+    console.log('Starting form submission...');
 
     try {
+      console.log('Calling onSubmit handler...');
       await onSubmit(apiKey);
+      console.log('Form submission successful');
     } catch (err) {
+      console.error('Form submission error:', err);
       setError(err instanceof Error ? err.message : 'Authentication failed');
     } finally {
       setIsLoading(false);
@@ -51,7 +58,7 @@ export default function LoginForm({ onSubmit }: LoginFormProps) {
               setApiKey(e.target.value);
               setError('');
             }}
-            placeholder="secret_ABC123..."
+            placeholder="ntn_..."
             disabled={isLoading}
           />
           <p className="help-text">

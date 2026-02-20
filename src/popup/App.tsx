@@ -5,7 +5,6 @@
 
 import { useState, useEffect } from 'react';
 import { sendToBackground } from '../utils/ipc';
-import AuthService from '../services/auth';
 import StorageService from '../services/storage';
 import {
   ExtractedArticle,
@@ -149,20 +148,32 @@ export default function App() {
   };
 
   const handleLogin = async (apiKey: string) => {
+    console.log('handleLogin called with API key:', apiKey.substring(0, 20) + '...');
     try {
-      const token = await AuthService.authenticateWithApiKey(apiKey);
+      console.log('Starting authentication via background script...');
+      const response = await sendToBackground({
+        action: 'AUTHENTICATE',
+        data: { apiKey },
+      });
+      console.log('Authentication response:', response);
 
-      setState((prev) => ({
-        ...prev,
-        isAuthenticated: true,
-        token,
-        message: 'Successfully authenticated',
-        messageType: 'success',
-      }));
+      if (response.success && response.token) {
+        setState((prev) => ({
+          ...prev,
+          isAuthenticated: true,
+          token: response.token,
+          message: 'Successfully authenticated',
+          messageType: 'success',
+        }));
 
-      await loadDatabases();
-      await extractContent();
+        console.log('Loading databases...');
+        await loadDatabases();
+        await extractContent();
+      } else {
+        throw new Error(response.error || 'Authentication failed');
+      }
     } catch (error) {
+      console.error('Login error:', error);
       setState((prev) => ({
         ...prev,
         message: error instanceof Error ? error.message : 'Authentication failed',

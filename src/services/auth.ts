@@ -17,8 +17,9 @@ class AuthService {
       // Trim and validate API key format
       apiKey = apiKey.trim();
       
-      if (!apiKey.startsWith('secret_')) {
-        throw new Error('Invalid API key format. API keys should start with "secret_"');
+      // Notion API keys start with "ntn_"
+      if (!apiKey.startsWith('ntn_')) {
+        throw new Error('Invalid API key format. API keys should start with "ntn_"');
       }
 
       // Validate API key by making a test request
