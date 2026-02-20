@@ -1,8 +1,5 @@
-/**
- * Content Script
- * Runs in the context of web pages
- * Communicates with background script via chrome.runtime.sendMessage
- */
+import { Readability } from '@mozilla/readability';
+import TurndownService from 'turndown';
 
 console.log('[NotionClipper] Content script loaded');
 
@@ -38,34 +35,32 @@ chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
 });
 
 /**
- * Extract page content using Readability
+ * Extract page content using Readability and convert to Markdown
  */
 async function extractPageContent(): Promise<any> {
   try {
     console.log('[NotionClipper] Starting content extraction...');
-    
-    // Import Readability from global scope (injected by webpack bundle)
-    if (typeof (window as any).Readability === 'undefined') {
-      console.warn('[NotionClipper] Readability not found in window, attempting to load...');
-      // Try to get Readability from the page context
-      const Readability = await loadReadability();
-      if (!Readability) {
-        throw new Error('Readability library not available');
-      }
-      (window as any).Readability = Readability;
-    }
 
     // Clone the document to avoid mutating the original
     const clonedDoc = document.cloneNode(true) as Document;
 
     // Pre-process: Remove unnecessary elements that might confuse Readability
     const elementsToRemove = clonedDoc.querySelectorAll(
-      '.ads, .ad, .sidebar, .comment, .comments, #comments, footer, nav, .social-share, .newsletter-signup'
+      '.ads, .ad, .sidebar, .comment, .comments, #comments, footer, nav, .social-share, .newsletter-signup, script, style, noscript, iframe'
     );
     elementsToRemove.forEach(el => el.parentNode?.removeChild(el));
 
+    // Handle lazy loaded images (data-src -> src) commonly used on Wechat/Medium etc.
+    const images = clonedDoc.querySelectorAll('img');
+    images.forEach(img => {
+      const dataSrc = img.getAttribute('data-src') || img.getAttribute('data-original');
+      if (dataSrc) {
+        img.setAttribute('src', dataSrc);
+      }
+    });
+
     // Use Readability to extract content
-    const Readability = (window as any).Readability;
+    // We instantiate it directly since we imported it
     const reader = new Readability(clonedDoc);
     const article = reader.parse();
 
@@ -78,25 +73,32 @@ async function extractPageContent(): Promise<any> {
       contentLength: article.content?.length,
     });
 
-    // Extract images from the original HTML
-    const images = extractImages();
+    // Convert HTML content to Markdown
+    const turndownService = new TurndownService({
+      headingStyle: 'atx',
+      codeBlockStyle: 'fenced'
+    });
+    
+    // Configure turndown to ignore scripts and styles if any remain
+    turndownService.remove(['script', 'style']);
+
+    const markdownContent = turndownService.turndown(article.content);
+
+    // Extract original images from the page (for uploading)
+    const pageImages = extractImages();
     const mainImage = extractMainImage();
     const favicon = extractFavicon();
 
     // Extract metadata
     const metadata = extractMetadata();
 
-    // Convert HTML to Markdown (for now, keep as HTML)
-    // Full implementation would use turndown library
-    const content = article.content;
-
     const result = {
       title: article.title || document.title || 'Untitled',
-      content,
+      content: markdownContent, // Send Markdown instead of HTML
       url: window.location.href,
       mainImage,
       favicon,
-      images,
+      images: pageImages,
       excerpt: article.excerpt,
       domain: new URL(window.location.href).hostname,
       publishDate: metadata.publishDate,
@@ -105,8 +107,8 @@ async function extractPageContent(): Promise<any> {
 
     console.log('[NotionClipper] Extraction result:', {
       title: result.title,
-      contentLength: content?.length,
-      imagesCount: images.length,
+      contentLength: markdownContent?.length,
+      imagesCount: pageImages.length,
       mainImage: !!mainImage,
     });
 
@@ -116,39 +118,6 @@ async function extractPageContent(): Promise<any> {
     throw error;
   }
 }
-
-/**
- * Load Readability library with fallback
- */
-async function loadReadability(): Promise<any> {
-  try {
-    // Check if Readability is already available globally
-    if ((window as any).Readability) {
-      return (window as any).Readability;
-    }
-
-    // Try to create a minimal Readability clone for DOM extraction
-    // This is a fallback when the full library isn't available
-    return class SimpleReadability {
-      content: any;
-      constructor(doc: Document, options?: any) {
-        this.content = doc.body.innerHTML;
-      }
-      parse() {
-        return {
-          title: document.title,
-          content: this.content,
-          excerpt: '',
-          byline: '',
-        };
-      }
-    };
-  } catch (error) {
-    console.error('[NotionClipper] Failed to load Readability:', error);
-    return null;
-  }
-}
-
 
 /**
  * Extract images from the page
