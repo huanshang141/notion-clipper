@@ -118,6 +118,36 @@ async function handleExtractContent(
 
     console.log('[NotionClipper Background] Active tab ID:', activeTab.id);
 
+    // 1. Check if content script is loaded via PING
+    let isContentScriptLoaded = false;
+    try {
+      console.log('[NotionClipper Background] Pinging content script...');
+      const pingResponse = await sendToContentScript(activeTab.id, { action: 'PING' });
+      if (pingResponse && pingResponse.success) {
+        isContentScriptLoaded = true;
+        console.log('[NotionClipper Background] Content script is already loaded.');
+      }
+    } catch (error) {
+      console.log('[NotionClipper Background] Content script not responding to PING, will attempt to inject.');
+    }
+
+    // 2. Inject content script if not loaded
+    if (!isContentScriptLoaded) {
+      try {
+        console.log('[NotionClipper Background] Injecting content script programmatically...');
+        await chrome.scripting.executeScript({
+          target: { tabId: activeTab.id },
+          files: ['dist/content.js']
+        });
+        console.log('[NotionClipper Background] Content script injected successfully.');
+        // Wait a bit for the script to initialize
+        await new Promise(resolve => setTimeout(resolve, 500));
+      } catch (injectError) {
+        console.error('[NotionClipper Background] Failed to inject content script:', injectError);
+        throw new Error('Cannot access this page. Please refresh the page or try another website.');
+      }
+    }
+
     // Try to send extraction request to content script with retry logic
     let contentResponse: any;
     let retries = 3;

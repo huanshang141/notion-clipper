@@ -48,9 +48,18 @@ class RequestService {
   async notionRequest<T = any>(
     config: AxiosRequestConfig
   ): Promise<T> {
-    const client = await this.initNotionClient();
-    const response = await client.request<T>(config);
-    return response.data;
+    try {
+      const client = await this.initNotionClient();
+      const response = await client.request<T>(config);
+      return response.data;
+    } catch (error: any) {
+      if (error.response) {
+        console.error('Notion API Error:', JSON.stringify(error.response.data, null, 2));
+      } else {
+        console.error('Request Error:', error.message);
+      }
+      throw error;
+    }
   }
 
   /**

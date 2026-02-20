@@ -317,32 +317,49 @@ class NotionService {
             children.push({
               object: 'block',
               type: 'image',
-              image: isDataUri
-                ? {
-                    type: 'external',
-                    external: {
-                      url: imageUrl,
-                    },
-                  }
-                : {
-                    type: 'external',
-                    external: {
-                      url: imageUrl,
-                    },
-                  },
+              image: {
+                type: 'external',
+                external: {
+                  url: imageUrl,
+                },
+              },
             });
           }
         }
       }
 
-      // Create the page using data_source_id
+      // Prepare Icon and Cover
+      let icon: any = undefined;
+      // Use favicon if available and is a valid URL (not data URI if too long, but we'll try)
+      if (article.favicon && article.favicon.startsWith('http')) {
+        icon = {
+          type: 'external',
+          external: { url: article.favicon },
+        };
+      }
+
+      let cover: any = undefined;
+      // Use mainImage as cover
+      if (article.mainImage && article.mainImage.startsWith('http')) {
+        cover = {
+          type: 'external',
+          external: { url: article.mainImage },
+        };
+      }
+
+      // Create the page using database_id (standard API)
+      const pagePayload: any = {
+        parent: { database_id: dataSourceId },
+        properties,
+        children: children.length > 0 ? children : undefined,
+      };
+
+      if (icon) pagePayload.icon = icon;
+      if (cover) pagePayload.cover = cover;
+
       const response = await requestService.notionPost<any>(
         '/pages',
-        {
-          parent: { type: 'data_source_id', data_source_id: dataSourceId },
-          properties,
-          children: children.length > 0 ? children : undefined,
-        }
+        pagePayload
       );
 
       if (!response.id) {

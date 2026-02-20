@@ -10,6 +10,7 @@ export interface ExtractedArticle {
   content: string; // Markdown format
   url: string;
   mainImage?: string; // URL or data URI for the main image
+  favicon?: string;   // Page favicon
   images: ExtractedImage[];
   excerpt?: string;
   authorName?: string;

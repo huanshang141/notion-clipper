@@ -10,6 +10,11 @@ console.log('[NotionClipper] Content script loaded');
 chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
   console.log('[NotionClipper] Content script received message:', message.action);
   
+  if (message.action === 'PING') {
+    sendResponse({ success: true, message: 'PONG' });
+    return false;
+  }
+
   if (message.action === 'EXTRACT_PAGE_CONTENT') {
     extractPageContent()
       .then((article) => {
@@ -53,6 +58,12 @@ async function extractPageContent(): Promise<any> {
     // Clone the document to avoid mutating the original
     const clonedDoc = document.cloneNode(true) as Document;
 
+    // Pre-process: Remove unnecessary elements that might confuse Readability
+    const elementsToRemove = clonedDoc.querySelectorAll(
+      '.ads, .ad, .sidebar, .comment, .comments, #comments, footer, nav, .social-share, .newsletter-signup'
+    );
+    elementsToRemove.forEach(el => el.parentNode?.removeChild(el));
+
     // Use Readability to extract content
     const Readability = (window as any).Readability;
     const reader = new Readability(clonedDoc);
@@ -70,6 +81,7 @@ async function extractPageContent(): Promise<any> {
     // Extract images from the original HTML
     const images = extractImages();
     const mainImage = extractMainImage();
+    const favicon = extractFavicon();
 
     // Extract metadata
     const metadata = extractMetadata();
@@ -83,6 +95,7 @@ async function extractPageContent(): Promise<any> {
       content,
       url: window.location.href,
       mainImage,
+      favicon,
       images,
       excerpt: article.excerpt,
       domain: new URL(window.location.href).hostname,
@@ -231,6 +244,31 @@ function extractMetadata() {
   }
 
   return { publishDate, authorName };
+}
+
+/**
+ * Extract favicon
+ */
+function extractFavicon(): string | undefined {
+  const selectors = [
+    'link[rel="apple-touch-icon"]',
+    'link[rel="apple-touch-icon-precomposed"]',
+    'link[rel="icon"]',
+    'link[rel="shortcut icon"]'
+  ];
+
+  for (const selector of selectors) {
+    const element = document.querySelector(selector);
+    if (element) {
+      const href = element.getAttribute('href');
+      if (href) {
+        return resolveUrl(href);
+      }
+    }
+  }
+
+  // Fallback to default location
+  return new URL('/favicon.ico', window.location.origin).href;
 }
 
 /**
