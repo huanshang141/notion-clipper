@@ -1,15 +1,19 @@
 # Chrome Extension 加载错误修复
 
 ## 问题
+
 在 Chrome 中加载 Notion Clipper 扩展时出现以下错误：
+
 ```
 Uncaught ReferenceError: process is not defined
 ```
 
 ## 根源
+
 源代码中使用了 `process.env`（Node.js 特性），但在 Chrome Extension Service Worker（浏览器环境）中不可用。
 
 `src/utils/constants.ts` 第 11 行：
+
 ```typescript
 clientId: process.env.NOTION_CLIENT_ID || '', // ❌ 错误
 redirectUri: chrome.identity.getRedirectURL(''), // ❌ 错误：顶级作用域调用
@@ -18,6 +22,7 @@ redirectUri: chrome.identity.getRedirectURL(''), // ❌ 错误：顶级作用域
 ## 解决方案
 
 ### 1. constants.ts 修改
+
 - 移除 `process.env` 使用
 - 延迟执行 `chrome.identity.getRedirectURL()`（仅在运行时）
 - 新增 `getOAuthRedirectUri()` 函数
@@ -25,29 +30,31 @@ redirectUri: chrome.identity.getRedirectURL(''), // ❌ 错误：顶级作用域
 ```typescript
 // ✅ 修复后
 export const OAUTH_CONFIG = {
-  clientId: '', // 在需要时配置
-  redirectUri: '', // 在运行时通过函数获取
-  scope: ['user.self:read'],
+  clientId: "", // 在需要时配置
+  redirectUri: "", // 在运行时通过函数获取
+  scope: ["user.self:read"],
 };
 
 export function getOAuthRedirectUri(): string {
-  if (typeof chrome !== 'undefined' && chrome.identity) {
-    return chrome.identity.getRedirectURL('');
+  if (typeof chrome !== "undefined" && chrome.identity) {
+    return chrome.identity.getRedirectURL("");
   }
-  return '';
+  return "";
 }
 ```
 
 ### 2. auth.ts 修改
+
 - 导入新的 `getOAuthRedirectUri` 函数
 - 使用函数调用替代常量访问
 
 ```typescript
 // ✅ 修复后
-authUrl.searchParams.set('redirect_uri', getOAuthRedirectUri());
+authUrl.searchParams.set("redirect_uri", getOAuthRedirectUri());
 ```
 
 ### 3. webpack.config.js 增强
+
 - 添加 DefinePlugin 确保任何遗留的 process.env 都被正确处理
 
 ```javascript
@@ -58,14 +65,15 @@ new webpack.DefinePlugin({
 
 ## 修改的文件
 
-| 文件 | 修改内容 |
-|------|--------|
+| 文件                     | 修改内容                                   |
+| ------------------------ | ------------------------------------------ |
 | `src/utils/constants.ts` | 移除 process.env，延迟执行 chrome API 调用 |
-| `src/services/auth.ts` | 使用 getOAuthRedirectUri() 函数 |
-| `webpack.config.js` | 添加 webpack DefinePlugin |
-| `dist/background.js` | 在构建时自动重新生成 |
+| `src/services/auth.ts`   | 使用 getOAuthRedirectUri() 函数            |
+| `webpack.config.js`      | 添加 webpack DefinePlugin                  |
+| `dist/background.js`     | 在构建时自动重新生成                       |
 
 ## 构建状态
+
 ```
 ✅ npm run build - compiled successfully in 5364 ms
 ✅ No 'process.env' references in dist/background.js
@@ -75,6 +83,7 @@ new webpack.DefinePlugin({
 ## 如何重新加载扩展
 
 1. **打开 Chrome 扩展管理页面**
+
    ```
    chrome://extensions/
    ```
