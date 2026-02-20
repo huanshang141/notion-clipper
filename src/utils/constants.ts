@@ -6,12 +6,15 @@
 export const NOTION_API_BASE = 'https://api.notion.com/v1';
 export const NOTION_API_VERSION = '2025-09-03';
 
-// OAuth Configuration (需要在注册完应用后填入)
-export const OAUTH_CONFIG = {
-  clientId: process.env.NOTION_CLIENT_ID || '', // 需要配置
-  redirectUri: chrome.identity.getRedirectURL(''),
-  scope: ['user.self:read'],
-};
+/**
+ * Authentication Configuration
+ * Using Internal Integration Token model (API Key)
+ * Users provide their own Notion Internal Integration token
+ */
+export const AUTH_CONFIG = {
+  tokenType: 'internal_integration',
+  apiKeyRequired: true,
+} as const;
 
 // Message Actions
 export const MESSAGE_ACTIONS = {

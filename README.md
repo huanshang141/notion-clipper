@@ -7,7 +7,7 @@
 - 🚀 一键保存网页到 Notion
 - 📄 自动提取文章正文和标题
 - 🖼️ 自动处理和上传图片到 Notion
-- 🔐 支持 OAuth 2.0 和 API Key 双认证
+- 🔐 支持 API Key 认证（Internal Integration Token）
 - 🎯 智能字段映射，自动识别数据库结构
 
 ## 快速开始

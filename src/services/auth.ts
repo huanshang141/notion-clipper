@@ -1,66 +1,14 @@
 /**
  * Authentication Service
- * Handles OAuth and API Key authentication with Notion
+ * Handles API Key authentication with Notion Internal Integration
+ * Users provide their own Internal Integration Token
  */
 
 import StorageService from './storage';
 import { NotionAuthToken } from '../types';
-import { OAUTH_CONFIG, NOTION_API_VERSION } from '../utils/constants';
+import { NOTION_API_VERSION } from '../utils/constants';
 
 class AuthService {
-  /**
-   * Start OAuth flow
-   * Opens Notion authorization URL in a new window
-   */
-  async startOAuthFlow(): Promise<NotionAuthToken> {
-    if (!OAUTH_CONFIG.clientId) {
-      throw new Error('OAuth client ID not configured. Please set NOTION_CLIENT_ID environment variable.');
-    }
-
-    return new Promise((resolve, reject) => {
-      // Build OAuth URL
-      const authUrl = new URL('https://api.notion.com/oauth/authorize');
-      authUrl.searchParams.set('client_id', OAUTH_CONFIG.clientId);
-      authUrl.searchParams.set('redirect_uri', OAUTH_CONFIG.redirectUri);
-      authUrl.searchParams.set('response_type', 'code');
-      authUrl.searchParams.set('owner', 'user');
-
-      // Open authorization window
-      chrome.identity.launchWebAuthFlow(
-        {
-          url: authUrl.toString(),
-          interactive: true,
-        },
-        async (redirectUrl) => {
-          if (chrome.runtime.lastError || !redirectUrl) {
-            reject(
-              new Error(
-                chrome.runtime.lastError?.message || 'OAuth 授权被用户取消'
-              )
-            );
-            return;
-          }
-
-          try {
-            // Extract authorization code from redirect URL
-            const url = new URL(redirectUrl);
-            const code = url.searchParams.get('code');
-
-            if (!code) {
-              throw new Error('No authorization code received');
-            }
-
-            // Exchange code for access token via background script
-            // In production, this should be done securely on a backend
-            throw new Error('OAuth flow requires backend support. Please use API Key authentication instead.');
-          } catch (error) {
-            reject(error);
-          }
-        }
-      );
-    });
-  }
-
   /**
    * Authenticate with API Key (primary method for MVP)
    */

@@ -32,7 +32,7 @@
 │ └──────────────────────────────────────────────┘   │
 │                                                     │
 │ Services Layer:                                     │
-│ - AuthService: OAuth2 & API Key authentication    │
+│ - AuthService: API Key authentication (Internal Integration)    │
 │ - NotionService: Notion API 包装                  │
 │ - ExtractService: 内容提取                        │
 │ - ImageService: 图片处理                          │
@@ -63,22 +63,6 @@ Fetch /users/me 验证
 StorageService 保存 token
     ▼
 ✓ 认证成功
-```
-
-### OAuth 2.0 认证 (未来特性)
-
-```
-用户点击 "Connect with OAuth"
-    ▼
-AuthService.startOAuthFlow()
-    ▼
-chrome.identity.launchWebAuthFlow()
-    ▼
-Notion 授权页面
-    ▼
-授权码交换 (需要后端)
-    ▼
-保存 access_token + refresh_token
 ```
 
 ## 数据流
@@ -164,19 +148,12 @@ Notion 授权页面
 
 ### 开发环境设置
 
-1. **创建 `.env` 文件** (可选, 用于 OAuth):
-
-```env
-NOTION_CLIENT_ID=your_client_id_here
-NOTION_CLIENT_SECRET=your_client_secret_here
-```
-
-2. **获取测试 API Key**:
+1. **获取测试 API Key**:
    - 访问 https://www.notion.so/my-integrations
-   - 创建新集成
+   - 创建新集成（Internal Integration）
    - 复制 Internal Integration Token (以 `secret_` 开头)
 
-3. **配置测试环境变量**:
+2. **配置测试环境变量**:
 
 ```bash
 export NOTION_TEST_API_KEY=secret_your_test_key_here
@@ -291,8 +268,8 @@ A: 检查:
 
 A:
 
-1. Token 已过期 (OAuth) - 需要刷新
-2. API Key 无效或已撤销
+1. API Key 无效或已撤销
+2. API Key 没有被正确保存到 chrome.storage
 3. 使用了错误的认证头格式
 
 ## 下一步优化
@@ -306,7 +283,6 @@ A:
 
 ### 中期 (第4-5周)
 
-- [ ] OAuth 2.0 完整实现
 - [ ] 批量保存功能
 - [ ] 定时任务支持
 - [ ] 本地化多语言

@@ -18,19 +18,16 @@ package.json - 依赖项和脚本
 核心依赖（参考 web-clipper + 优化）：
 
 🔐 认证系统（第 2 周 - 上半部分）
-2.1 双认证模式支持
-设计理由：用户可根据偏好选择，降低入门难度
+2.1 API Key 认证（Internal Integration）
+设计理由：使用 Notion Internal Integration Token（API Key），用户手动创建集成并配置 API Key
 
-OAuth 2.0 流程（参考 Notion 官方文档）
+API Key 认证方式
 
 在 src/services/auth.ts 实现
-通过 popup 中的"Connect to Notion"按钮触发
-使用 Chrome identity API 打开授权 URL
-接收 authorization code 后交换 access token
-API Key 方式（简化备选）
-
-在 src/options/SettingsPage.tsx 提供手动输入
-将 API Key 加密存储在 Chrome storage.sync
+通过 Options Page 提供 API Key 手动输入配置
+将 API Key 存储在 Chrome storage.sync
+调用 Notion API 验证 Token 有效性
+使用 Internal Integration Token 调用 Notion API
 2.2 Token 管理
 在 src/services/storage.ts 实现
 存储位置：Chrome storage.sync（自动同步）
@@ -119,8 +116,8 @@ src/popup/App.tsx：
 
 状态：
 
-❌ 未认证 → 显示"Connect to Notion"按钮
-✅ 已认证 → 显示保存表单
+❌ API Key 未配置 → 显示"Configure API Key"按钮
+✅ API Key 已验证 → 显示保存表单
 表单字段：
 
 数据库选择（下拉菜单）
@@ -152,12 +149,12 @@ src/options/SettingsPage.tsx：
 
 工作空间管理
 
-当前连接的工作空间显示
+当前工作空间显示
 登出按钮
-API Key 备选认证
+API Key 配置
 
-输入框和保存按钮
-"连接测试"验证 API Key 有效性
+输入框和"连接测试"按钮
+验证 API Key 有效性
 字段映射配置（可选，如 auto-detect 失败）
 
 手动配置备选字段映射
@@ -181,7 +178,7 @@ Day 5：background/content 脚本基础框架、IPC 通信模板
 检验：能够成功打包和在 Chrome 中加载扩展（无报错）
 
 第 2 周：认证和 Notion 集成
-Day 1-2：OAuth 和 API Key 双认证实现、token 存储
+Day 1-2：API Key 认证实现、token 存储和验证
 Day 3-4：Notion API 封装（getWorkspace, listDatabases, getDatabaseSchema）
 Day 5：动态字段映射 逻辑实现、设置页面完成
 检验：能够连接 Notion 并显示工作空间和数据库列表
@@ -225,7 +222,7 @@ Day 4-5：Chrome Web Store 提交准备或内部发布
 决策 选择 理由
 技术栈 TypeScript + React + Webpack 与 web-clipper 一致，社区验证，单人开发可参考示例
 Manifest 版本 V3 Chrome 最新标准，符合未来方向
-认证方式 OAuth + API Key（并行） 用户可选，降低初期配置复杂度
+认证方式 Internal Integration Token（API Key） 简化架构，用户手动配置，无需 OAuth
 字段映射 动态自动识别 + 手动备选 减少配置工作，提升用户体验
 图片处理 MVP 必须支持 符合用户需求，参考 notion-pic 方案
 浏览器支持 Chrome + Edge 简化初期工作，未来可扩展
@@ -253,29 +250,7 @@ API 集成指南（便于未来扩展）
 高级内容处理：代码块、表格、公式保留
 Firefox 支持：兼容 WebExtensions API
 同步功能：定期重新获取工作空间数据库列表
-这个计划是否符合你的预期？有没有需要调整的部分？### 性能测试
-
-内容提取：< 3 秒
-图片上传（单张）：< 2 秒
-保存到 Notion：< 5 秒
-🎯 关键决策（在本规划中已确定）
-决策 选择 理由
-技术栈 TypeScript + React + Webpack 与 web-clipper 一致，社区验证，单人开发可参考示例
-Manifest 版本 V3 Chrome 最新标准，符合未来方向
-认证方式 OAuth + API Key（并行） 用户可选，降低初期配置复杂度
-字段映射 动态自动识别 + 手动备选 减少配置工作，提升用户体验
-图片处理 MVP 必须支持 符合用户需求，参考 notion-pic 方案
-浏览器支持 Chrome + Edge 简化初期工作，未来可扩展
-MVP 范围 3 个核心模块（认证、提取、保存） 4-6 周内完成，保证质量
-📦 交付物清单
-✅ 代码仓库的完整版本，包括：
-
-源代码（TypeScript）
-配置文件（manifest.json, webpack.config.js 等）
-构建脚本（package.json）
-✅ 用户文档：
-
-安装指南（如何加载到 Chrome）
+这个计划是否符合你的预期？有没有需要调整的部分？
 快速开始（连接 Notion 和保存第一个页面）
 常见问题和故障排除
 ✅ 开发者文档：
