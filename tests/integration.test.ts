@@ -18,14 +18,14 @@ async function testValidateApiKeyFormat() {
   console.log('TEST 1: Validate API Key Format');
   
   const testCases = [
-    { key: 'secret_123abc', valid: true, name: 'Valid format' },
+    { key: 'ntn_123abc', valid: true, name: 'Valid format' },
     { key: 'invalid_key', valid: false, name: 'Invalid prefix' },
     { key: '', valid: false, name: 'Empty key' },
     { key: '   ', valid: false, name: 'Whitespace only' },
   ];
 
   for (const testCase of testCases) {
-    const isValid = testCase.key.trim().startsWith('secret_');
+    const isValid = testCase.key.trim().startsWith('ntn_');
     const result = isValid === testCase.valid ? '✓ PASS' : '✗ FAIL';
     console.log(`  ${result}: ${testCase.name} (${testCase.key})`);
   }

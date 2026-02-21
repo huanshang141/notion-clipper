@@ -57,7 +57,7 @@ async function runTests() {
   if (!config.apiKey) {
     console.log(
       '❌ SKIPPED: Set NOTION_TEST_API_KEY environment variable to run tests\n' +
-        'Example: export NOTION_TEST_API_KEY=secret_abc123def456...\n'
+        'Example: export NOTION_TEST_API_KEY=ntn_abc123def456...\n'
     );
     return;
   }

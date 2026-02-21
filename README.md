@@ -1,76 +1,52 @@
 # Notion Clipper
 
-一个 Chrome 浏览器扩展，用于快速将网页内容保存到 Notion。
+将网页内容一键保存到 Notion 数据库的 Chrome 扩展（Manifest V3 + React + TypeScript）。
 
-## 功能
+## 主要能力
 
-- 🚀 一键保存网页到 Notion
-- 📄 自动提取文章正文和标题
-- 🖼️ 自动处理和上传图片到 Notion
-- 🔐 支持 API Key 认证（Internal Integration Token）
-- 🎯 智能字段映射，自动识别数据库结构
+- 提取网页正文并转换为 Markdown
+- 在原页面内进行预览编辑（WYSIWYG + Markdown 还原）
+- 自动识别 Notion 数据库字段并支持手动映射
+- 支持图片下载/上传到 Notion
+- 支持浅色 / 深色主题（Popup + In-page Preview）
 
 ## 快速开始
 
-### 安装依赖
-
 ```bash
 npm install
-```
-
-### 开发
-
-```bash
-npm run dev
-```
-
-这将启动开发服务器，监视文件变化并自动重新编译。
-
-### 构建
-
-```bash
 npm run build
 ```
 
-构建生产版本到 `dist/` 目录。
+加载扩展：
 
-### 加载到 Chrome
+1. 打开 `chrome://extensions/`
+2. 开启开发者模式
+3. 选择“加载已解压的扩展程序”
+4. 选择项目下的 `dist/`
 
-1. 打开 Chrome，进入 `chrome://extensions/`
-2. 启用"开发者模式"（右上角开关）
-3. 点击"加载已解压的扩展"
-4. 选择项目的 `dist/` 目录
-5. 扩展应该成功加载
+## 开发命令
 
-## 项目结构
-
-```
-notion-clipper/
-├── src/
-│   ├── background/          # 后台脚本（Service Worker）
-│   ├── content/             # 内容脚本
-│   ├── popup/               # 弹出窗口 UI
-│   ├── options/             # 设置页面
-│   ├── services/            # 业务逻辑服务
-│   ├── utils/               # 工具函数
-│   └── types/               # TypeScript 类型定义
-├── public/                  # 静态资源
-├── dist/                    # 构建输出（生成）
-├── manifest.json            # Chrome 扩展配置
-├── package.json
-├── tsconfig.json
-└── webpack.config.js
+```bash
+npm run dev
+npm run build
+npm run lint
 ```
 
-## 开发指南
+## 认证说明
 
-### IPC 通信
+- 使用 Notion Internal Integration Token（前缀 `ntn_`）
+- 在扩展弹窗中直接输入，不需要写入本地文件
 
-扩展使用 Chrome 的 `runtime.sendMessage` 进行进程间通信。
+## 文档分工
 
-### 存储
+- [QUICKSTART.md](QUICKSTART.md): 5 分钟上手
+- [docs/DEVELOPMENT.md](docs/DEVELOPMENT.md): 架构、消息流、开发说明
+- [TEST_PLAN.md](TEST_PLAN.md): 测试范围与执行清单
 
-使用 Chrome `storage.sync` 存储用户配置和 token，支持跨设备同步。
+## 安全与公开仓库说明
+
+- `.env` 已被忽略，不应提交真实密钥
+- 仅保留占位符配置文件 `.env.example`
 
 ## 许可证
 
