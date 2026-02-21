@@ -404,14 +404,7 @@ async function saveInlineEditorDraft() {
     return;
   }
 
-  const response = await sendToBackground({
-    action: MESSAGE_ACTIONS.UPDATE_EDITOR_DRAFT_BY_URL,
-    data: {
-      url: inlineEditorArticle!.url,
-      selectedDatabaseId: inlineEditorSelectedDatabaseId,
-      article: editorContent,
-    },
-  });
+  const response = await persistInlineEditorDraft(editorContent);
 
   if (response?.success) {
     if (inlineEditorStatus) {
@@ -423,6 +416,17 @@ async function saveInlineEditorDraft() {
   if (inlineEditorStatus) {
     inlineEditorStatus.textContent = response?.error || '保存失败，请重试';
   }
+}
+
+async function persistInlineEditorDraft(editorContent: any) {
+  return sendToBackground({
+    action: MESSAGE_ACTIONS.UPDATE_EDITOR_DRAFT_BY_URL,
+    data: {
+      url: editorContent.url,
+      selectedDatabaseId: inlineEditorSelectedDatabaseId,
+      article: editorContent,
+    },
+  });
 }
 
 function getInlineEditorContent() {
@@ -484,14 +488,10 @@ async function saveInlineEditorToNotion() {
       throw new Error(saveResponse?.error || '保存到 Notion 失败');
     }
 
-    await sendToBackground({
-      action: MESSAGE_ACTIONS.UPDATE_EDITOR_DRAFT_BY_URL,
-      data: {
-        url: inlineEditorArticle!.url,
-        selectedDatabaseId: inlineEditorSelectedDatabaseId,
-        article: editorContent,
-      },
-    });
+    const draftResponse = await persistInlineEditorDraft(editorContent);
+    if (!draftResponse?.success) {
+      throw new Error(draftResponse?.error || '草稿保存失败');
+    }
 
     if (inlineEditorStatus) {
       inlineEditorStatus.textContent = saveResponse.url
