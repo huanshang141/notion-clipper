@@ -3,6 +3,7 @@ import TurndownService from 'turndown';
 import { marked } from 'marked';
 import { MESSAGE_ACTIONS } from '../utils/constants';
 import { sendToBackground } from '../utils/ipc';
+import { ExtractedArticle } from '../types';
 import StorageService from '../services/storage';
 
 console.log('[NotionClipper] Content script loaded');
@@ -11,8 +12,13 @@ let inlineEditorRoot: HTMLDivElement | null = null;
 let inlineEditorShadowHost: HTMLDivElement | null = null;
 let inlineEditorEditable: HTMLDivElement | null = null;
 let inlineEditorStatus: HTMLSpanElement | null = null;
-let inlineEditorArticle: any = null;
+let inlineEditorArticle: ExtractedArticle | null = null;
 let inlineEditorSelectedDatabaseId: string | undefined;
+
+type InlineEditorDraftResponse = {
+  success?: boolean;
+  error?: string;
+};
 
 const inlineEditorTurndown = new TurndownService({
   headingStyle: 'atx',
@@ -80,7 +86,7 @@ chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
   return false;
 });
 
-async function openInlineEditor(article: any, selectedDatabaseId?: string) {
+async function openInlineEditor(article: ExtractedArticle, selectedDatabaseId?: string) {
   if (!article) {
     throw new Error('Article is required for inline editor');
   }
@@ -418,8 +424,8 @@ async function saveInlineEditorDraft() {
   }
 }
 
-async function persistInlineEditorDraft(editorContent: any) {
-  return sendToBackground({
+async function persistInlineEditorDraft(editorContent: ExtractedArticle): Promise<InlineEditorDraftResponse> {
+  return sendToBackground<InlineEditorDraftResponse>({
     action: MESSAGE_ACTIONS.UPDATE_EDITOR_DRAFT_BY_URL,
     data: {
       url: editorContent.url,
@@ -429,7 +435,7 @@ async function persistInlineEditorDraft(editorContent: any) {
   });
 }
 
-function getInlineEditorContent() {
+function getInlineEditorContent(): ExtractedArticle | null {
   if (!inlineEditorEditable || !inlineEditorArticle) {
     return null;
   }
@@ -488,15 +494,20 @@ async function saveInlineEditorToNotion() {
       throw new Error(saveResponse?.error || '保存到 Notion 失败');
     }
 
-    const draftResponse = await persistInlineEditorDraft(editorContent);
-    if (!draftResponse?.success) {
-      throw new Error(draftResponse?.error || '草稿保存失败');
-    }
-
     if (inlineEditorStatus) {
       inlineEditorStatus.textContent = saveResponse.url
         ? `已保存到 Notion：${saveResponse.url}`
         : '已保存到 Notion';
+    }
+
+    const draftResponse = await persistInlineEditorDraft(editorContent);
+    if (!draftResponse?.success) {
+      console.warn('[NotionClipper] Draft persistence failed after Notion save:', draftResponse?.error);
+      if (inlineEditorStatus) {
+        inlineEditorStatus.textContent = saveResponse.url
+          ? `已保存到 Notion：${saveResponse.url}（草稿保存失败）`
+          : '已保存到 Notion（草稿保存失败）';
+      }
     }
   } catch (error) {
     if (inlineEditorStatus) {
