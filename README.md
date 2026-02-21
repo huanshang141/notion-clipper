@@ -1,30 +1,31 @@
 # Notion Clipper
 
-将网页内容一键保存到 Notion 数据库的 Chrome 扩展（Manifest V3 + React + TypeScript）。
+[中文版本](README_zh.md)
 
-## 主要能力
+A Chrome extension for saving web content to a Notion database with one click.
+Built with Manifest V3, React, and TypeScript.
 
-- 提取网页正文并转换为 Markdown
-- 在原页面内进行预览编辑（WYSIWYG + Markdown 还原）
-- 自动识别 Notion 数据库字段并支持手动映射
-- 支持图片下载/上传到 Notion
-- 支持浅色 / 深色主题（Popup + In-page Preview）
+## Features
 
-## 快速开始
+- Extract article body and convert it to Markdown
+- In‑page preview editor (WYSIWYG + Markdown restore)
+- Auto‑detect Notion database fields and support manual mapping
+- Download/upload images to Notion
+- Light/dark theme support (popup + in‑page preview)
+
+## Quick Start
 
 ```bash
 npm install
 npm run build
 ```
 
-加载扩展：
+1. Open `chrome://extensions/`
+2. Enable Developer mode
+3. Click **Load unpacked**
+4. Select the project’s `dist/` directory
 
-1. 打开 `chrome://extensions/`
-2. 开启开发者模式
-3. 选择“加载已解压的扩展程序”
-4. 选择项目下的 `dist/`
-
-## 开发命令
+## Development commands
 
 ```bash
 npm run dev
@@ -32,22 +33,25 @@ npm run build
 npm run lint
 ```
 
-## 认证说明
+## Authentication
 
-- 使用 Notion Internal Integration Token（前缀 `ntn_`）
-- 在扩展弹窗中直接输入，不需要写入本地文件
+- Uses a Notion Internal Integration Token (prefix `ntn_`)
+- Enter the token in the popup; it’s not stored in any file
 
-## 文档分工
+## Documentation
 
-- [QUICKSTART.md](QUICKSTART.md): 5 分钟上手
-- [docs/DEVELOPMENT.md](docs/DEVELOPMENT.md): 架构、消息流、开发说明
-- [TEST_PLAN.md](TEST_PLAN.md): 测试范围与执行清单
+All docs now reside under the `docs/` folder. English is the default language, with 中文 versions available for convenience.
 
-## 安全与公开仓库说明
+- **English (default)**
+  - [Quickstart](docs/en/QUICKSTART.md)
+  - [Development](docs/en/DEVELOPMENT.md)
+  - [Test Plan](docs/en/TEST_PLAN.md)
+- **中文**
+  - [快速开始](docs/zh/QUICKSTART.md)
+  - [开发指南](docs/zh/DEVELOPMENT.md)
+  - [测试计划](docs/zh/TEST_PLAN.md)
 
-- `.env` 已被忽略，不应提交真实密钥
-- 仅保留占位符配置文件 `.env.example`
+## Security & Public Repository
 
-## 许可证
-
-MIT
+- `.env` is ignored; never commit real keys
+- Only a placeholder `.env.example` is included
