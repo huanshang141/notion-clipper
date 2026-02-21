@@ -177,6 +177,11 @@ export interface UpdateEditorDraftByUrlRequest extends ChromeMessage {
   };
 }
 
+export interface InlineEditorDraftResponse {
+  success: boolean;
+  error?: string;
+}
+
 /**
  * Auth status request/response
  */
