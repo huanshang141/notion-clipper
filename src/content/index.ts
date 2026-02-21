@@ -6,6 +6,7 @@ import { MESSAGE_ACTIONS } from '../utils/constants';
 console.log('[NotionClipper] Content script loaded');
 
 let inlineEditorRoot: HTMLDivElement | null = null;
+let inlineEditorShadowHost: HTMLDivElement | null = null;
 let inlineEditorEditable: HTMLDivElement | null = null;
 let inlineEditorStatus: HTMLSpanElement | null = null;
 let inlineEditorArticle: any = null;
@@ -77,20 +78,48 @@ function openInlineEditor(article: any, selectedDatabaseId?: string) {
     inlineEditorStatus = null;
   }
 
+  if (inlineEditorShadowHost) {
+    inlineEditorShadowHost.remove();
+    inlineEditorShadowHost = null;
+  }
+
+  const host = document.createElement('div');
+  host.id = 'notion-clipper-inline-editor-host';
+  const shadowRoot = host.attachShadow({ mode: 'open' });
+  const style = document.createElement('style');
+  style.textContent = `
+    :host {
+      all: initial;
+    }
+
+    * {
+      box-sizing: border-box;
+      font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Oxygen, Ubuntu, Cantarell, sans-serif;
+      color: inherit;
+    }
+
+    .notion-clipper-inline-root {
+      position: fixed;
+      top: 0;
+      left: 0;
+      width: 100vw;
+      height: 100vh;
+      z-index: 2147483646;
+      background: rgba(17, 24, 39, 0.86);
+      backdrop-filter: blur(2px);
+      display: flex;
+      justify-content: center;
+      align-items: center;
+      padding: 24px;
+      color-scheme: light;
+      color: #111827;
+    }
+  `;
+  shadowRoot.appendChild(style);
+
   const root = document.createElement('div');
   root.id = 'notion-clipper-inline-editor';
-  root.style.position = 'fixed';
-  root.style.top = '0';
-  root.style.left = '0';
-  root.style.width = '100vw';
-  root.style.height = '100vh';
-  root.style.zIndex = '2147483646';
-  root.style.background = 'rgba(17, 24, 39, 0.86)';
-  root.style.backdropFilter = 'blur(2px)';
-  root.style.display = 'flex';
-  root.style.justifyContent = 'center';
-  root.style.alignItems = 'center';
-  root.style.padding = '24px';
+  root.className = 'notion-clipper-inline-root';
 
   const panel = document.createElement('div');
   panel.style.width = 'min(1100px, 100%)';
@@ -119,7 +148,7 @@ function openInlineEditor(article: any, selectedDatabaseId?: string) {
   const status = document.createElement('span');
   status.style.fontSize = '12px';
   status.style.color = '#6b7280';
-  status.textContent = '直接编辑渲染内容；框选后将恢复为 markdown 语法';
+  status.textContent = '直接编辑渲染内容；框选后点击 Restore Selection 可还原 markdown 语法';
   inlineEditorStatus = status;
 
   const actions = document.createElement('div');
@@ -135,6 +164,11 @@ function openInlineEditor(article: any, selectedDatabaseId?: string) {
   closeButton.type = 'button';
   closeButton.textContent = 'Close';
   applyButtonStyle(closeButton, '#f3f4f6', '#111827');
+
+  const restoreButton = document.createElement('button');
+  restoreButton.type = 'button';
+  restoreButton.textContent = 'Restore Selection';
+  applyButtonStyle(restoreButton, '#111827', '#ffffff');
 
   const body = document.createElement('div');
   body.style.flex = '1';
@@ -154,11 +188,12 @@ function openInlineEditor(article: any, selectedDatabaseId?: string) {
   editor.style.outline = 'none';
   editor.style.whiteSpace = 'normal';
   editor.style.wordBreak = 'break-word';
+  editor.style.color = '#111827';
   editor.innerHTML = sanitizeHtml(marked.parse(article.content || '') as string);
   inlineEditorEditable = editor;
 
-  editor.addEventListener('mouseup', () => {
-    restoreSelectionToMarkdown(editor);
+  editor.querySelectorAll('*').forEach((child) => {
+    (child as HTMLElement).style.color = 'inherit';
   });
 
   saveButton.addEventListener('click', () => {
@@ -169,6 +204,10 @@ function openInlineEditor(article: any, selectedDatabaseId?: string) {
     closeInlineEditor();
   });
 
+  restoreButton.addEventListener('click', () => {
+    restoreSelectionToMarkdown(editor);
+  });
+
   root.addEventListener('click', (event) => {
     if (event.target === root) {
       closeInlineEditor();
@@ -177,6 +216,7 @@ function openInlineEditor(article: any, selectedDatabaseId?: string) {
 
   document.addEventListener('keydown', handleInlineEditorKeydown, true);
 
+  actions.appendChild(restoreButton);
   actions.appendChild(saveButton);
   actions.appendChild(closeButton);
   header.appendChild(title);
@@ -187,7 +227,9 @@ function openInlineEditor(article: any, selectedDatabaseId?: string) {
   panel.appendChild(body);
   root.appendChild(panel);
 
-  document.documentElement.appendChild(root);
+  shadowRoot.appendChild(root);
+  document.documentElement.appendChild(host);
+  inlineEditorShadowHost = host;
   inlineEditorRoot = root;
   editor.focus();
 }
@@ -208,6 +250,16 @@ function handleInlineEditorKeydown(event: KeyboardEvent) {
     return;
   }
 
+  const isMac = navigator.platform.toLowerCase().includes('mac');
+  const modifier = isMac ? event.metaKey : event.ctrlKey;
+  if (modifier && event.shiftKey && event.key.toLowerCase() === 'm') {
+    event.preventDefault();
+    if (inlineEditorEditable) {
+      restoreSelectionToMarkdown(inlineEditorEditable);
+    }
+    return;
+  }
+
   if (event.key === 'Escape') {
     event.preventDefault();
     closeInlineEditor();
@@ -221,6 +273,12 @@ function closeInlineEditor() {
     inlineEditorEditable = null;
     inlineEditorStatus = null;
   }
+
+  if (inlineEditorShadowHost) {
+    inlineEditorShadowHost.remove();
+    inlineEditorShadowHost = null;
+  }
+
   document.removeEventListener('keydown', handleInlineEditorKeydown, true);
 }
 
@@ -253,13 +311,14 @@ function restoreSelectionToMarkdown(container: HTMLElement) {
   range.insertNode(textNode);
 
   const nextRange = document.createRange();
-  nextRange.setStartAfter(textNode);
-  nextRange.collapse(true);
+  nextRange.setStartBefore(textNode);
+  nextRange.setEndAfter(textNode);
   selection.removeAllRanges();
   selection.addRange(nextRange);
+  container.focus();
 
   if (inlineEditorStatus) {
-    inlineEditorStatus.textContent = '已将选区恢复为 markdown 语法，可继续编辑';
+    inlineEditorStatus.textContent = '已将选区恢复为 markdown 语法，当前选区已保留，可直接批量替换';
   }
 }
 

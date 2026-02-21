@@ -521,7 +521,7 @@ export default function SaveForm({
             Open In-Page Preview Editor
           </button>
           <p className="help-text" style={{ marginTop: 8 }}>
-            编辑完成后点击 Save Draft，然后回到弹窗点击 Try Again 刷新。
+            在页面中可框选后点击 Restore Selection（或 Ctrl/Cmd+Shift+M）还原 markdown，再点 Save Draft。
           </p>
         </div>
       </div>
