@@ -48,33 +48,7 @@
     </style>
   </head>
   <body>
-    <script>
-      (function () {
-        try {
-          var rootKey = 'notion_clipper_data';
-          var defaultTheme = window.matchMedia && window.matchMedia('(prefers-color-scheme: dark)').matches
-            ? 'dark'
-            : 'light';
-
-          if (!chrome || !chrome.storage || !chrome.storage.sync) {
-            document.documentElement.setAttribute('data-theme', defaultTheme);
-            return;
-          }
-
-          chrome.storage.sync.get([rootKey], function (result) {
-            var data = result && result[rootKey] ? result[rootKey] : {};
-            var theme = data && data.settings && data.settings.theme;
-            var resolved = theme === 'dark' || theme === 'light' ? theme : defaultTheme;
-            document.documentElement.setAttribute('data-theme', resolved);
-          });
-        } catch (error) {
-          var fallbackTheme = window.matchMedia && window.matchMedia('(prefers-color-scheme: dark)').matches
-            ? 'dark'
-            : 'light';
-          document.documentElement.setAttribute('data-theme', fallbackTheme);
-        }
-      })();
-    </script>
+    <script src="popupThemeInit.js"></script>
     <div id="root"></div>
   </body>
 </html>

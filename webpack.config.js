@@ -10,6 +10,7 @@ module.exports = {
     background: './src/background/index.ts',
     content: './src/content/index.ts',
     popup: './src/popup/index.tsx',
+    popupThemeInit: './src/popup/theme-init.ts',
     editor: './src/editor/index.tsx',
     options: './src/options/index.tsx',
   },
