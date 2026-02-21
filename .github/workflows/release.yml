@@ -64,11 +64,6 @@ jobs:
           mkdir -p artifacts/release-extension
           cp -R dist/. artifacts/release-extension/
 
-          if [ -d "images" ]; then
-            mkdir -p artifacts/release-extension/images
-            cp -R images/. artifacts/release-extension/images/
-          fi
-
           find artifacts/release-extension -type f \( -name "*.map" -o -name "*.d.ts" -o -name "*.d.ts.map" \) -delete
 
           if [ ! -f "artifacts/release-extension/manifest.json" ]; then
@@ -76,11 +71,15 @@ jobs:
             exit 1
           fi
 
+          cd artifacts/release-extension
+          zip -r ../notion-clipper-${{ needs.meta.outputs.tag }}.zip .
+          cd ../..
+
       - name: Upload artifact
         uses: actions/upload-artifact@v4
         with:
           name: notion-clipper-${{ needs.meta.outputs.tag }}-package.zip
-          path: artifacts/release-extension
+          path: artifacts/notion-clipper-${{ needs.meta.outputs.tag }}.zip
           if-no-files-found: error
           retention-days: 30
 
@@ -118,13 +117,7 @@ jobs:
       - uses: actions/download-artifact@v4
         with:
           name: notion-clipper-${{ needs.meta.outputs.tag }}-package.zip
-          path: assets/release-extension
-
-      - name: Package release asset
-        run: |
-          cd assets/release-extension
-          zip -r ../notion-clipper-${{ needs.meta.outputs.tag }}.zip .
-          cd ../..
+          path: assets
 
       - name: Create Release
         uses: softprops/action-gh-release@v2
