@@ -45,6 +45,7 @@ module.exports = {
     new CopyPlugin({
       patterns: [
         { from: 'manifest.json', to: 'manifest.json' },
+        { from: 'images', to: 'images' },
       ],
     }),
     new HtmlWebpackPlugin({
