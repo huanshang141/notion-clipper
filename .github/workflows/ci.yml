@@ -45,13 +45,12 @@ jobs:
         run: |
           bash scripts/package-extension.sh \
             dist \
-            artifacts/ci-extension \
-            artifacts/notion-clipper-ci-${{ github.sha }}.zip
+            artifacts/ci-extension
 
       - name: Upload build artifact
         uses: actions/upload-artifact@v4
         with:
-          name: notion-clipper-ci-${{ github.sha }}.zip
-          path: artifacts/notion-clipper-ci-${{ github.sha }}.zip
+          name: notion-clipper-ci-${{ github.sha }}
+          path: artifacts/ci-extension
           if-no-files-found: error
           retention-days: 14

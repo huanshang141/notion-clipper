@@ -63,14 +63,13 @@ jobs:
         run: |
           bash scripts/package-extension.sh \
             dist \
-            artifacts/release-extension \
-            artifacts/notion-clipper-${{ needs.meta.outputs.tag }}.zip
+            artifacts/release-extension
 
       - name: Upload artifact
         uses: actions/upload-artifact@v4
         with:
-          name: notion-clipper-${{ needs.meta.outputs.tag }}-package.zip
-          path: artifacts/notion-clipper-${{ needs.meta.outputs.tag }}.zip
+          name: notion-clipper-${{ needs.meta.outputs.tag }}-package
+          path: artifacts/release-extension
           if-no-files-found: error
           retention-days: 30
 
@@ -107,8 +106,14 @@ jobs:
     steps:
       - uses: actions/download-artifact@v4
         with:
-          name: notion-clipper-${{ needs.meta.outputs.tag }}-package.zip
-          path: assets
+          name: notion-clipper-${{ needs.meta.outputs.tag }}-package
+          path: assets/release-extension
+
+      - name: Package release asset
+        run: |
+          cd assets/release-extension
+          zip -r ../notion-clipper-${{ needs.meta.outputs.tag }}.zip .
+          cd ../..
 
       - name: Create Release
         uses: softprops/action-gh-release@v2

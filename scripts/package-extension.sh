@@ -3,7 +3,8 @@ set -euo pipefail
 
 SOURCE_DIR="${1:-dist}"
 PACKAGE_DIR="${2:-artifacts/extension}"
-ZIP_PATH="${3:-artifacts/extension.zip}"
+ZIP_PATH="${3:-}"
+ROOT_DIR="$(pwd)"
 
 if [ ! -d "$SOURCE_DIR" ]; then
   echo "Package failed: source directory '$SOURCE_DIR' not found"
@@ -20,10 +21,20 @@ if [ ! -f "$PACKAGE_DIR/manifest.json" ]; then
   exit 1
 fi
 
-mkdir -p "$(dirname "$ZIP_PATH")"
-(
-  cd "$PACKAGE_DIR"
-  zip -r "$(realpath "$ZIP_PATH")" .
-)
+echo "Package prepared: $PACKAGE_DIR"
 
-echo "Package created: $ZIP_PATH"
+if [ -n "$ZIP_PATH" ]; then
+  case "$ZIP_PATH" in
+    /*) ABS_ZIP_PATH="$ZIP_PATH" ;;
+    *) ABS_ZIP_PATH="$ROOT_DIR/$ZIP_PATH" ;;
+  esac
+
+  mkdir -p "$(dirname "$ABS_ZIP_PATH")"
+
+  (
+    cd "$PACKAGE_DIR"
+    zip -r "$ABS_ZIP_PATH" .
+  )
+
+  echo "Package zipped: $ABS_ZIP_PATH"
+fi
