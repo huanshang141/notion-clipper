@@ -25,9 +25,10 @@ jobs:
       - name: Install dependencies
         run: npm ci
 
-      - name: Run lint
-        run: npm run lint
-        continue-on-error: true
+      # Lint step temporarily disabled until eslint is configured
+      # - name: Run lint
+      #   run: npm run lint
+      #   continue-on-error: true
 
       - name: Build extension
         run: npm run build
