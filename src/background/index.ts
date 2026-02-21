@@ -157,7 +157,7 @@ async function handleOpenEditorWithArticle(
     } catch {
       await chrome.scripting.executeScript({
         target: { tabId: activeTab.id },
-        files: ['dist/content.js'],
+        files: ['content.js'],
       });
       await new Promise((resolve) => setTimeout(resolve, 300));
     }
@@ -330,7 +330,7 @@ async function handleExtractContent(
         console.log('[NotionClipper Background] Injecting content script programmatically...');
         await chrome.scripting.executeScript({
           target: { tabId: activeTab.id },
-          files: ['dist/content.js']
+          files: ['content.js']
         });
         console.log('[NotionClipper Background] Content script injected successfully.');
         // Wait a bit for the script to initialize
