@@ -78,6 +78,10 @@ chrome.runtime.onMessage.addListener((message: ChromeMessage, sender, sendRespon
       handleUpdateEditorDraft(message, sender, sendResponse);
       return true;
 
+    case MESSAGE_ACTIONS.UPDATE_EDITOR_DRAFT_BY_URL:
+      handleUpdateEditorDraftByUrl(message, sender, sendResponse);
+      return true;
+
     case MESSAGE_ACTIONS.GET_EDITOR_DRAFT_BY_URL:
       handleGetEditorDraftByUrl(message, sender, sendResponse);
       return true;
@@ -141,8 +145,30 @@ async function handleOpenEditorWithArticle(
 
     await StorageService.setEditorDraft(draft);
 
-    const editorUrl = chrome.runtime.getURL(`dist/editor.html?draftId=${encodeURIComponent(draftId)}`);
-    await chrome.tabs.create({ url: editorUrl });
+    const activeTab = await getActiveTab();
+    if (!activeTab?.id) {
+      throw new Error('No active tab found');
+    }
+
+    try {
+      await sendToContentScript(activeTab.id, {
+        action: 'PING',
+      });
+    } catch {
+      await chrome.scripting.executeScript({
+        target: { tabId: activeTab.id },
+        files: ['dist/content.js'],
+      });
+      await new Promise((resolve) => setTimeout(resolve, 300));
+    }
+
+    await sendToContentScript(activeTab.id, {
+      action: MESSAGE_ACTIONS.OPEN_INLINE_EDITOR,
+      data: {
+        article,
+        selectedDatabaseId: message.data?.selectedDatabaseId,
+      },
+    });
 
     sendResponse({ success: true, draftId });
   } catch (error) {
@@ -150,6 +176,34 @@ async function handleOpenEditorWithArticle(
     sendResponse({
       success: false,
       error: error instanceof Error ? error.message : 'Failed to open editor',
+    });
+  }
+}
+
+async function handleUpdateEditorDraftByUrl(
+  message: ChromeMessage,
+  sender: chrome.runtime.MessageSender,
+  sendResponse: (response: { success: boolean; draft?: EditorDraft; error?: string }) => void
+) {
+  try {
+    const url = message.data?.url;
+    const article = message.data?.article;
+    if (!url || !article) {
+      throw new Error('url and article are required');
+    }
+
+    const updatedDraft = await StorageService.upsertEditorDraftByUrl(
+      url,
+      article,
+      message.data?.selectedDatabaseId
+    );
+
+    sendResponse({ success: true, draft: updatedDraft });
+  } catch (error) {
+    console.error('Update editor draft by url error:', error);
+    sendResponse({
+      success: false,
+      error: error instanceof Error ? error.message : 'Failed to update editor draft by url',
     });
   }
 }

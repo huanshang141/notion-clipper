@@ -1,7 +1,21 @@
 import { Readability } from '@mozilla/readability';
 import TurndownService from 'turndown';
+import { marked } from 'marked';
+import { MESSAGE_ACTIONS } from '../utils/constants';
 
 console.log('[NotionClipper] Content script loaded');
+
+let inlineEditorRoot: HTMLDivElement | null = null;
+let inlineEditorEditable: HTMLDivElement | null = null;
+let inlineEditorStatus: HTMLSpanElement | null = null;
+let inlineEditorArticle: any = null;
+let inlineEditorSelectedDatabaseId: string | undefined;
+
+const inlineEditorTurndown = new TurndownService({
+  headingStyle: 'atx',
+  codeBlockStyle: 'fenced',
+});
+inlineEditorTurndown.remove(['script', 'style']);
 
 // Handle messages from background script
 chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
@@ -31,8 +45,284 @@ chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
 
     return true; // Keep the channel open for async response
   }
+
+  if (message.action === MESSAGE_ACTIONS.OPEN_INLINE_EDITOR) {
+    try {
+      openInlineEditor(message.data?.article, message.data?.selectedDatabaseId);
+      sendResponse({ success: true });
+    } catch (error) {
+      sendResponse({
+        success: false,
+        error: error instanceof Error ? error.message : 'Failed to open inline editor',
+      });
+    }
+    return false;
+  }
+
   return false;
 });
+
+function openInlineEditor(article: any, selectedDatabaseId?: string) {
+  if (!article) {
+    throw new Error('Article is required for inline editor');
+  }
+
+  inlineEditorArticle = article;
+  inlineEditorSelectedDatabaseId = selectedDatabaseId;
+
+  if (inlineEditorRoot) {
+    inlineEditorRoot.remove();
+    inlineEditorRoot = null;
+    inlineEditorEditable = null;
+    inlineEditorStatus = null;
+  }
+
+  const root = document.createElement('div');
+  root.id = 'notion-clipper-inline-editor';
+  root.style.position = 'fixed';
+  root.style.top = '0';
+  root.style.left = '0';
+  root.style.width = '100vw';
+  root.style.height = '100vh';
+  root.style.zIndex = '2147483646';
+  root.style.background = 'rgba(17, 24, 39, 0.86)';
+  root.style.backdropFilter = 'blur(2px)';
+  root.style.display = 'flex';
+  root.style.justifyContent = 'center';
+  root.style.alignItems = 'center';
+  root.style.padding = '24px';
+
+  const panel = document.createElement('div');
+  panel.style.width = 'min(1100px, 100%)';
+  panel.style.height = 'min(90vh, 100%)';
+  panel.style.background = '#fff';
+  panel.style.borderRadius = '12px';
+  panel.style.display = 'flex';
+  panel.style.flexDirection = 'column';
+  panel.style.overflow = 'hidden';
+  panel.style.boxShadow = '0 20px 60px rgba(0,0,0,0.3)';
+
+  const header = document.createElement('div');
+  header.style.display = 'flex';
+  header.style.justifyContent = 'space-between';
+  header.style.alignItems = 'center';
+  header.style.gap = '12px';
+  header.style.padding = '14px 16px';
+  header.style.borderBottom = '1px solid #e5e7eb';
+
+  const title = document.createElement('div');
+  title.style.fontSize = '16px';
+  title.style.fontWeight = '600';
+  title.style.color = '#111827';
+  title.textContent = `Preview & Edit: ${article.title || 'Untitled'}`;
+
+  const status = document.createElement('span');
+  status.style.fontSize = '12px';
+  status.style.color = '#6b7280';
+  status.textContent = '直接编辑渲染内容；框选后将恢复为 markdown 语法';
+  inlineEditorStatus = status;
+
+  const actions = document.createElement('div');
+  actions.style.display = 'flex';
+  actions.style.gap = '8px';
+
+  const saveButton = document.createElement('button');
+  saveButton.type = 'button';
+  saveButton.textContent = 'Save Draft';
+  applyButtonStyle(saveButton, '#2563eb', '#ffffff');
+
+  const closeButton = document.createElement('button');
+  closeButton.type = 'button';
+  closeButton.textContent = 'Close';
+  applyButtonStyle(closeButton, '#f3f4f6', '#111827');
+
+  const body = document.createElement('div');
+  body.style.flex = '1';
+  body.style.padding = '16px';
+  body.style.overflow = 'auto';
+  body.style.background = '#f8fafc';
+
+  const editor = document.createElement('div');
+  editor.contentEditable = 'true';
+  editor.style.minHeight = '100%';
+  editor.style.padding = '16px';
+  editor.style.border = '1px solid #e5e7eb';
+  editor.style.borderRadius = '8px';
+  editor.style.background = '#ffffff';
+  editor.style.fontSize = '15px';
+  editor.style.lineHeight = '1.65';
+  editor.style.outline = 'none';
+  editor.style.whiteSpace = 'normal';
+  editor.style.wordBreak = 'break-word';
+  editor.innerHTML = sanitizeHtml(marked.parse(article.content || '') as string);
+  inlineEditorEditable = editor;
+
+  editor.addEventListener('mouseup', () => {
+    restoreSelectionToMarkdown(editor);
+  });
+
+  saveButton.addEventListener('click', () => {
+    void saveInlineEditorDraft();
+  });
+
+  closeButton.addEventListener('click', () => {
+    closeInlineEditor();
+  });
+
+  root.addEventListener('click', (event) => {
+    if (event.target === root) {
+      closeInlineEditor();
+    }
+  });
+
+  document.addEventListener('keydown', handleInlineEditorKeydown, true);
+
+  actions.appendChild(saveButton);
+  actions.appendChild(closeButton);
+  header.appendChild(title);
+  header.appendChild(actions);
+  body.appendChild(status);
+  body.appendChild(editor);
+  panel.appendChild(header);
+  panel.appendChild(body);
+  root.appendChild(panel);
+
+  document.documentElement.appendChild(root);
+  inlineEditorRoot = root;
+  editor.focus();
+}
+
+function applyButtonStyle(button: HTMLButtonElement, background: string, color: string) {
+  button.style.border = 'none';
+  button.style.borderRadius = '6px';
+  button.style.padding = '8px 12px';
+  button.style.cursor = 'pointer';
+  button.style.fontSize = '13px';
+  button.style.fontWeight = '600';
+  button.style.background = background;
+  button.style.color = color;
+}
+
+function handleInlineEditorKeydown(event: KeyboardEvent) {
+  if (!inlineEditorRoot) {
+    return;
+  }
+
+  if (event.key === 'Escape') {
+    event.preventDefault();
+    closeInlineEditor();
+  }
+}
+
+function closeInlineEditor() {
+  if (inlineEditorRoot) {
+    inlineEditorRoot.remove();
+    inlineEditorRoot = null;
+    inlineEditorEditable = null;
+    inlineEditorStatus = null;
+  }
+  document.removeEventListener('keydown', handleInlineEditorKeydown, true);
+}
+
+function restoreSelectionToMarkdown(container: HTMLElement) {
+  const selection = window.getSelection();
+  if (!selection || selection.rangeCount === 0 || selection.isCollapsed) {
+    return;
+  }
+
+  const range = selection.getRangeAt(0);
+  const common = range.commonAncestorContainer;
+  const parentElement = common.nodeType === Node.ELEMENT_NODE
+    ? (common as HTMLElement)
+    : common.parentElement;
+
+  if (!parentElement || !container.contains(parentElement)) {
+    return;
+  }
+
+  const wrapper = document.createElement('div');
+  wrapper.appendChild(range.cloneContents());
+  const selectedHtml = sanitizeHtml(wrapper.innerHTML);
+  const selectedMarkdown = inlineEditorTurndown.turndown(selectedHtml).trim();
+  if (!selectedMarkdown) {
+    return;
+  }
+
+  range.deleteContents();
+  const textNode = document.createTextNode(selectedMarkdown);
+  range.insertNode(textNode);
+
+  const nextRange = document.createRange();
+  nextRange.setStartAfter(textNode);
+  nextRange.collapse(true);
+  selection.removeAllRanges();
+  selection.addRange(nextRange);
+
+  if (inlineEditorStatus) {
+    inlineEditorStatus.textContent = '已将选区恢复为 markdown 语法，可继续编辑';
+  }
+}
+
+function sanitizeHtml(html: string): string {
+  const parser = new DOMParser();
+  const doc = parser.parseFromString(html || '', 'text/html');
+  const blockedTags = ['script', 'style', 'iframe', 'object', 'embed', 'noscript'];
+
+  blockedTags.forEach((tag) => {
+    doc.querySelectorAll(tag).forEach((el) => el.remove());
+  });
+
+  doc.querySelectorAll('*').forEach((el) => {
+    Array.from(el.attributes).forEach((attr) => {
+      const name = attr.name.toLowerCase();
+      const value = attr.value.trim().toLowerCase();
+
+      if (name.startsWith('on')) {
+        el.removeAttribute(attr.name);
+      }
+
+      if ((name === 'src' || name === 'href') && value.startsWith('javascript:')) {
+        el.removeAttribute(attr.name);
+      }
+    });
+  });
+
+  return doc.body.innerHTML;
+}
+
+async function saveInlineEditorDraft() {
+  if (!inlineEditorEditable || !inlineEditorArticle) {
+    return;
+  }
+
+  const html = sanitizeHtml(inlineEditorEditable.innerHTML || '');
+  const markdown = inlineEditorTurndown.turndown(html);
+
+  const response = await chrome.runtime.sendMessage({
+    action: MESSAGE_ACTIONS.UPDATE_EDITOR_DRAFT_BY_URL,
+    data: {
+      url: inlineEditorArticle.url,
+      selectedDatabaseId: inlineEditorSelectedDatabaseId,
+      article: {
+        ...inlineEditorArticle,
+        content: markdown,
+        rawHtml: html,
+        contentFormat: 'markdown',
+      },
+    },
+  });
+
+  if (response?.success) {
+    if (inlineEditorStatus) {
+      inlineEditorStatus.textContent = '草稿已保存，回到插件弹窗即可直接保存到 Notion';
+    }
+    return;
+  }
+
+  if (inlineEditorStatus) {
+    inlineEditorStatus.textContent = response?.error || '保存失败，请重试';
+  }
+}
 
 /**
  * Extract page content using Readability and convert to Markdown

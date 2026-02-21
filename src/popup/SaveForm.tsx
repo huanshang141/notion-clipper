@@ -17,6 +17,20 @@ interface FieldMappingConfig {
   config?: any;
 }
 
+const SOURCE_FIELD_OPTIONS = [
+  { value: '', label: 'Not mapped' },
+  { value: 'title', label: 'Page Title' },
+  { value: 'content', label: 'Page Content' },
+  { value: 'url', label: 'Url' },
+  { value: 'mainImage', label: 'Main Image' },
+  { value: 'favicon', label: 'Website Icon' },
+  { value: 'authorName', label: 'Author' },
+  { value: 'publishDate', label: 'Publish Date' },
+  { value: 'excerpt', label: 'Excerpt' },
+  { value: 'domain', label: 'Domain' },
+  { value: 'custom', label: 'Custom Input' },
+];
+
 interface SaveFormProps {
   article: ExtractedArticle;
   databases: NotionDatabase[];
@@ -160,8 +174,6 @@ export default function SaveForm({
     }
   };
 
-  const [fieldMapping, setFieldMapping] = useState<Record<string, any>>({});
-
   useEffect(() => {
     setTitle(article.title);
   }, [article]);
@@ -181,34 +193,26 @@ export default function SaveForm({
         data: { databaseId: selectedDatabaseId },
       });
 
-      if (response.fieldMapping && typeof response.fieldMapping === 'object') {
-        const newMappings: Record<string, FieldMappingConfig> = {};
-        const newFieldMapping: Record<string, any> = {};
+      const autoMapping =
+        response.fieldMapping && typeof response.fieldMapping === 'object'
+          ? (response.fieldMapping as Record<string, any>)
+          : {};
 
-        for (const [propId, mapping] of Object.entries(response.fieldMapping)) {
-          const m = mapping as any;
-          newMappings[propId] = {
-            propertyId: propId,
-            propertyName: m.propertyName,
-            propertyType: m.propertyType,
-            sourceField: m.sourceField,
-            isEnabled: m.isEnabled,
-            config: m.config,
-          };
+      const newMappings: Record<string, FieldMappingConfig> = {};
 
-          // Build property value if source field exists
-          if (m.sourceField) {
-            const value = buildPropertyValue(m.propertyType, m.sourceField);
-            if (value !== null) {
-              newMappings[propId].value = value;
-              newFieldMapping[propId] = value;
-            }
-          }
-        }
+      (databaseSchema || []).forEach((prop) => {
+        const m = autoMapping[prop.id];
+        newMappings[prop.id] = {
+          propertyId: prop.id,
+          propertyName: prop.name,
+          propertyType: prop.type,
+          sourceField: m?.sourceField || '',
+          isEnabled: !!m?.sourceField,
+          config: m?.config || prop.config,
+        };
+      });
 
-        setFieldMappings(newMappings);
-        setFieldMapping(newFieldMapping);
-      }
+      setFieldMappings(newMappings);
     } catch (error) {
       console.error('Failed to get auto field mapping:', error);
       // Fallback to simple mapping if auto-mapping fails
@@ -218,7 +222,6 @@ export default function SaveForm({
 
   const fallbackFieldMapping = () => {
     const newMappings: Record<string, FieldMappingConfig> = {};
-    const newFieldMapping: Record<string, any> = {};
 
     // Define common field name patterns
     const COMMON_FIELD_NAMES = {
@@ -267,14 +270,56 @@ export default function SaveForm({
           const value = buildPropertyValue(prop.type, sourceField);
           if (value !== null) {
             newMappings[prop.id].value = value;
-            newFieldMapping[prop.id] = value;
           }
         }
       });
 
       setFieldMappings(newMappings);
-      setFieldMapping(newFieldMapping);
     }
+  };
+
+  const handleFieldSourceChange = (propertyId: string, sourceField: string) => {
+    setFieldMappings((prev) => {
+      const current = prev[propertyId];
+      if (!current) {
+        return prev;
+      }
+
+      const next: FieldMappingConfig = {
+        ...current,
+        sourceField,
+        isEnabled: !!sourceField,
+      };
+
+      if (sourceField === 'custom') {
+        next.value = buildPropertyValueForValue(current.propertyType, '') || undefined;
+      } else {
+        delete next.value;
+      }
+
+      return {
+        ...prev,
+        [propertyId]: next,
+      };
+    });
+  };
+
+  const handleCustomValueChange = (propertyId: string, rawValue: string) => {
+    setFieldMappings((prev) => {
+      const current = prev[propertyId];
+      if (!current) {
+        return prev;
+      }
+
+      const builtValue = buildPropertyValueForValue(current.propertyType, rawValue);
+      return {
+        ...prev,
+        [propertyId]: {
+          ...current,
+          value: builtValue,
+        },
+      };
+    });
   };
 
   const handleDatabaseChange = async (e: React.ChangeEvent<HTMLSelectElement>) => {
@@ -301,12 +346,12 @@ export default function SaveForm({
     for (const [propId, config] of Object.entries(fieldMappings)) {
       if (!config.isEnabled) continue;
 
-      if (config.sourceField) {
+      if (config.sourceField && config.sourceField !== 'custom') {
         const value = buildPropertyValueFromArticle(finalArticle, config.propertyType, config.sourceField);
         if (value !== null) {
           finalMapping[propId] = value;
         }
-      } else if (config.value !== null) {
+      } else if (config.sourceField === 'custom' && config.value !== null) {
         finalMapping[propId] = config.value;
       }
     }
@@ -473,10 +518,10 @@ export default function SaveForm({
             onClick={() => onOpenContentEditor({ ...article, title })}
             disabled={isSaving}
           >
-            Open Content Editor Window
+            Open In-Page Preview Editor
           </button>
           <p className="help-text" style={{ marginTop: 8 }}>
-            编辑完成后回到弹窗点击 Try Again 刷新，或直接保存当前内容。
+            编辑完成后点击 Save Draft，然后回到弹窗点击 Try Again 刷新。
           </p>
         </div>
       </div>
@@ -484,11 +529,11 @@ export default function SaveForm({
       {/* Schema Fields Preview */}
       {databaseSchema && databaseSchema.length > 0 && (
         <div className="schema-preview">
-          <h4>Fields to Save:</h4>
+          <h4>Fields Mapping</h4>
           <ul>
             {databaseSchema.map((prop) => {
               const config = fieldMappings[prop.id];
-              const hasMapping = config?.isEnabled && config?.sourceField;
+              const hasMapping = !!(config?.isEnabled && config?.sourceField);
               return (
                 <li
                   key={prop.id}
@@ -499,9 +544,28 @@ export default function SaveForm({
                     <span className={`field-type ${config?.propertyType}`}>{config?.propertyType}</span>
                     {hasMapping && <span className="mapped-indicator">✓</span>}
                   </div>
-                  {config?.sourceField && (
-                    <div className="field-source">
-                      <small>← {config.sourceField}</small>
+                  <div className="field-mapping-row">
+                    <span className="field-mapping-arrow">←</span>
+                    <select
+                      value={config?.sourceField || ''}
+                      onChange={(e) => handleFieldSourceChange(prop.id, e.target.value)}
+                      disabled={isSaving}
+                    >
+                      {SOURCE_FIELD_OPTIONS.map((option) => (
+                        <option key={option.value} value={option.value}>
+                          {option.label}
+                        </option>
+                      ))}
+                    </select>
+                  </div>
+                  {config?.sourceField === 'custom' && (
+                    <div className="field-custom-input">
+                      <input
+                        type="text"
+                        placeholder="Custom value"
+                        onChange={(e) => handleCustomValueChange(prop.id, e.target.value)}
+                        disabled={isSaving}
+                      />
                     </div>
                   )}
                 </li>

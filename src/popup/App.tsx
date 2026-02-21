@@ -242,7 +242,7 @@ export default function App() {
 
       setState((prev) => ({
         ...prev,
-        message: 'Content editor opened in a new tab',
+        message: 'In-page preview editor opened on current webpage',
         messageType: 'info',
       }));
     } catch (error) {

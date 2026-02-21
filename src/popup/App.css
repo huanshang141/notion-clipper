@@ -350,11 +350,41 @@ body {
 
 .schema-preview li {
   display: flex;
-  justify-content: space-between;
-  align-items: center;
+  flex-direction: column;
+  align-items: stretch;
   padding: 6px 0;
   font-size: 12px;
   border-bottom: 1px solid var(--border-color);
+}
+
+.field-header {
+  display: flex;
+  align-items: center;
+}
+
+.field-mapping-row {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  margin-top: 6px;
+}
+
+.field-mapping-arrow {
+  color: var(--text-light);
+  width: 16px;
+  text-align: center;
+}
+
+.field-custom-input {
+  margin-top: 6px;
+}
+
+.field-custom-input input {
+  width: 100%;
+  padding: 6px 8px;
+  border: 1px solid var(--border-color);
+  border-radius: 4px;
+  font-size: 12px;
 }
 
 .schema-preview li:last-child {

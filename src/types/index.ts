@@ -168,6 +168,15 @@ export interface EditorDraft {
   updatedAt?: number;
 }
 
+export interface UpdateEditorDraftByUrlRequest extends ChromeMessage {
+  action: 'UPDATE_EDITOR_DRAFT_BY_URL';
+  data: {
+    url: string;
+    article: Partial<ExtractedArticle>;
+    selectedDatabaseId?: string;
+  };
+}
+
 /**
  * Auth status request/response
  */

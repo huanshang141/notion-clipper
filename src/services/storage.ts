@@ -217,6 +217,57 @@ class StorageService {
       });
     });
   }
+
+  static async upsertEditorDraftByUrl(
+    url: string,
+    article: Partial<EditorDraft['article']>,
+    selectedDatabaseId?: string
+  ): Promise<EditorDraft> {
+    const existing = await this.getLatestEditorDraftByUrl(url);
+
+    if (existing) {
+      const nextDraft: EditorDraft = {
+        ...existing,
+        selectedDatabaseId: selectedDatabaseId ?? existing.selectedDatabaseId,
+        article: {
+          ...existing.article,
+          ...article,
+        },
+        updatedAt: Date.now(),
+      };
+
+      await this.setEditorDraft(nextDraft);
+      return nextDraft;
+    }
+
+    const draftId = typeof crypto !== 'undefined' && crypto.randomUUID
+      ? crypto.randomUUID()
+      : `${Date.now()}-${Math.floor(Math.random() * 100000)}`;
+
+    const newDraft: EditorDraft = {
+      id: draftId,
+      article: {
+        title: article.title || 'Untitled',
+        content: article.content || '',
+        url,
+        images: article.images || [],
+        rawHtml: article.rawHtml,
+        contentFormat: article.contentFormat,
+        mainImage: article.mainImage,
+        favicon: article.favicon,
+        excerpt: article.excerpt,
+        authorName: article.authorName,
+        publishDate: article.publishDate,
+        domain: article.domain,
+      },
+      selectedDatabaseId,
+      createdAt: Date.now(),
+      updatedAt: Date.now(),
+    };
+
+    await this.setEditorDraft(newDraft);
+    return newDraft;
+  }
 }
 
 export default StorageService;
