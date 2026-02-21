@@ -4,8 +4,6 @@
  */
 
 import React, { useState, useEffect } from 'react';
-import { marked } from 'marked';
-import TurndownService from 'turndown';
 import { sendToBackground } from '../utils/ipc';
 import { ExtractedArticle, NotionDatabase, NotionProperty } from '../types';
 
@@ -27,13 +25,8 @@ interface SaveFormProps {
   isSaving: boolean;
   onDatabaseChange: (databaseId: string) => void;
   onSave: (fieldMapping: Record<string, any>, article: ExtractedArticle) => Promise<void>;
+  onOpenContentEditor: (article: ExtractedArticle) => Promise<void>;
 }
-
-const turndownService = new TurndownService({
-  headingStyle: 'atx',
-  codeBlockStyle: 'fenced',
-});
-turndownService.remove(['script', 'style']);
 
 export default function SaveForm({
   article,
@@ -43,10 +36,9 @@ export default function SaveForm({
   isSaving,
   onDatabaseChange,
   onSave,
+  onOpenContentEditor,
 }: SaveFormProps) {
   const [title, setTitle] = useState(article.title);
-  const [editedMarkdown, setEditedMarkdown] = useState(getInitialMarkdown(article));
-  const [previewHtml, setPreviewHtml] = useState(sanitizeHtml(marked.parse(getInitialMarkdown(article)) as string));
   const [fieldMappings, setFieldMappings] = useState<Record<string, FieldMappingConfig>>({});
   const [isLoadingSchema, setIsLoadingSchema] = useState(false);
 
@@ -171,10 +163,7 @@ export default function SaveForm({
   const [fieldMapping, setFieldMapping] = useState<Record<string, any>>({});
 
   useEffect(() => {
-    const initialMarkdown = getInitialMarkdown(article);
     setTitle(article.title);
-    setEditedMarkdown(initialMarkdown);
-    setPreviewHtml(sanitizeHtml(marked.parse(initialMarkdown) as string));
   }, [article]);
 
   // Initialize field mapping from schema
@@ -299,13 +288,10 @@ export default function SaveForm({
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
 
-    const normalizedMarkdown = editedMarkdown.trim();
-    const generatedPreviewHtml = sanitizeHtml(marked.parse(normalizedMarkdown || article.content || '') as string);
     const finalArticle: ExtractedArticle = {
       ...article,
       title,
-      rawHtml: generatedPreviewHtml,
-      content: normalizedMarkdown || article.content,
+      content: article.content,
       contentFormat: 'markdown',
     };
 
@@ -342,13 +328,6 @@ export default function SaveForm({
       return buildPropertyValueForValue(propertyType, sourceArticle.title);
     }
     return buildPropertyValueForValue(propertyType, value);
-  };
-
-  const handleEditorInput = (nextHtml: string) => {
-    const sanitized = sanitizeHtml(nextHtml);
-    const markdown = turndownService.turndown(sanitized);
-    setEditedMarkdown(markdown);
-    setPreviewHtml(sanitized);
   };
 
   const buildPropertyValueForValue = (propertyType: string, value: any) => {
@@ -484,19 +463,22 @@ export default function SaveForm({
       </div>
 
       <div className="form-group">
-        <label htmlFor="content-editor">Content (WYSIWYG edit + markdown sync)</label>
-        <div className="live-editor-grid">
-          <div
-            id="content-editor"
-            className="live-editor-textarea"
-            contentEditable={!isSaving}
-            suppressContentEditableWarning
-            dangerouslySetInnerHTML={{ __html: previewHtml }}
-            onInput={(e) => handleEditorInput((e.currentTarget as HTMLDivElement).innerHTML)}
-          />
-          <div className="live-editor-preview" dangerouslySetInnerHTML={{ __html: previewHtml }} />
+        <label>Content (WYSIWYG edit + markdown sync)</label>
+        <div className="schema-preview" style={{ marginTop: 8 }}>
+          <p className="preview-url">Current markdown length: {article.content?.length || 0}</p>
+          <button
+            type="button"
+            className="save-btn"
+            style={{ marginTop: 8 }}
+            onClick={() => onOpenContentEditor({ ...article, title })}
+            disabled={isSaving}
+          >
+            Open Content Editor Window
+          </button>
+          <p className="help-text" style={{ marginTop: 8 }}>
+            编辑完成后回到弹窗点击 Try Again 刷新，或直接保存当前内容。
+          </p>
         </div>
-        <small className="help-text">最终保存使用编辑后的 Markdown 内容。</small>
       </div>
 
       {/* Schema Fields Preview */}
@@ -541,44 +523,5 @@ export default function SaveForm({
       </div>
     </form>
   );
-}
-
-function getInitialMarkdown(article: ExtractedArticle): string {
-  if (article.content && article.content.trim()) {
-    return article.content;
-  }
-
-  if (article.rawHtml && article.rawHtml.trim()) {
-    return turndownService.turndown(article.rawHtml);
-  }
-
-  return '';
-}
-
-function sanitizeHtml(html: string): string {
-  const parser = new DOMParser();
-  const doc = parser.parseFromString(html || '', 'text/html');
-  const blockedTags = ['script', 'style', 'iframe', 'object', 'embed', 'noscript'];
-
-  blockedTags.forEach((tag) => {
-    doc.querySelectorAll(tag).forEach((el) => el.remove());
-  });
-
-  doc.querySelectorAll('*').forEach((el) => {
-    Array.from(el.attributes).forEach((attr) => {
-      const name = attr.name.toLowerCase();
-      const value = attr.value.trim().toLowerCase();
-
-      if (name.startsWith('on')) {
-        el.removeAttribute(attr.name);
-      }
-
-      if ((name === 'src' || name === 'href') && value.startsWith('javascript:')) {
-        el.removeAttribute(attr.name);
-      }
-    });
-  });
-
-  return doc.body.innerHTML;
 }
 

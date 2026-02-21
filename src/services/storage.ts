@@ -174,6 +174,49 @@ class StorageService {
       });
     });
   }
+
+  static async updateEditorDraft(draftId: string, updates: Partial<EditorDraft>): Promise<EditorDraft | null> {
+    const existing = await this.getEditorDraft(draftId);
+    if (!existing) {
+      return null;
+    }
+
+    const nextDraft: EditorDraft = {
+      ...existing,
+      ...updates,
+      article: {
+        ...existing.article,
+        ...(updates.article || {}),
+      },
+      updatedAt: Date.now(),
+    };
+
+    await this.setEditorDraft(nextDraft);
+    return nextDraft;
+  }
+
+  static async getLatestEditorDraftByUrl(url: string): Promise<EditorDraft | null> {
+    if (!url) {
+      return null;
+    }
+
+    return new Promise((resolve) => {
+      chrome.storage.local.get(null, (result) => {
+        const drafts: EditorDraft[] = Object.entries(result)
+          .filter(([key]) => key.startsWith(this.EDITOR_DRAFT_PREFIX))
+          .map(([, value]) => value as EditorDraft)
+          .filter((draft) => draft?.article?.url === url);
+
+        if (drafts.length === 0) {
+          resolve(null);
+          return;
+        }
+
+        drafts.sort((a, b) => (b.updatedAt || b.createdAt || 0) - (a.updatedAt || a.createdAt || 0));
+        resolve(drafts[0]);
+      });
+    });
+  }
 }
 
 export default StorageService;

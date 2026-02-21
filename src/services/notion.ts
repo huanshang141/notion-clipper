@@ -649,7 +649,7 @@ class NotionService {
   }
 
   private pushRichTextContent(target: any[], text: string, annotations: any, href?: string): void {
-    const cleanText = text || '';
+    const cleanText = this.decodeHtmlEntities(text || '');
     if (!cleanText) {
       return;
     }
@@ -738,14 +738,7 @@ class NotionService {
       return null;
     }
 
-    const caption = alt
-      ? [
-          {
-            type: 'text',
-            text: { content: alt.substring(0, 2000) },
-          },
-        ]
-      : [];
+    const caption: any[] = [];
 
     const isUuid = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(imageRef);
     if (isUuid) {
@@ -773,6 +766,26 @@ class NotionService {
         caption,
       },
     };
+  }
+
+  private decodeHtmlEntities(input: string): string {
+    return input
+      .replace(/&quot;/g, '"')
+      .replace(/&#34;/g, '"')
+      .replace(/&apos;/g, "'")
+      .replace(/&#39;/g, "'")
+      .replace(/&lt;/g, '<')
+      .replace(/&gt;/g, '>')
+      .replace(/&amp;/g, '&')
+      .replace(/&nbsp;/g, ' ')
+      .replace(/&#x([0-9a-fA-F]+);/g, (_, hex) => {
+        const codePoint = Number.parseInt(hex, 16);
+        return Number.isFinite(codePoint) ? String.fromCodePoint(codePoint) : '';
+      })
+      .replace(/&#(\d+);/g, (_, dec) => {
+        const codePoint = Number.parseInt(dec, 10);
+        return Number.isFinite(codePoint) ? String.fromCodePoint(codePoint) : '';
+      });
   }
 
   private async appendBlockChildrenInBatches(parentBlockId: string, children: any[]): Promise<void> {
@@ -811,7 +824,7 @@ class NotionService {
               image: {
                 type: 'file_upload',
                 file_upload: { id: fileUploadId },
-                caption: block.image.caption || [],
+                caption: [],
               },
             });
             this.recordRequest();

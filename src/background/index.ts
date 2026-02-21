@@ -74,6 +74,14 @@ chrome.runtime.onMessage.addListener((message: ChromeMessage, sender, sendRespon
       handleGetEditorDraft(message, sender, sendResponse);
       return true;
 
+    case MESSAGE_ACTIONS.UPDATE_EDITOR_DRAFT:
+      handleUpdateEditorDraft(message, sender, sendResponse);
+      return true;
+
+    case MESSAGE_ACTIONS.GET_EDITOR_DRAFT_BY_URL:
+      handleGetEditorDraftByUrl(message, sender, sendResponse);
+      return true;
+
     default:
       return false;
   }
@@ -128,6 +136,7 @@ async function handleOpenEditorWithArticle(
       article,
       selectedDatabaseId: message.data?.selectedDatabaseId,
       createdAt: Date.now(),
+      updatedAt: Date.now(),
     };
 
     await StorageService.setEditorDraft(draft);
@@ -141,6 +150,63 @@ async function handleOpenEditorWithArticle(
     sendResponse({
       success: false,
       error: error instanceof Error ? error.message : 'Failed to open editor',
+    });
+  }
+}
+
+async function handleUpdateEditorDraft(
+  message: ChromeMessage,
+  sender: chrome.runtime.MessageSender,
+  sendResponse: (response: { success: boolean; draft?: EditorDraft; error?: string }) => void
+) {
+  try {
+    const draftId = message.data?.draftId;
+    if (!draftId) {
+      throw new Error('draftId is required');
+    }
+
+    const updated = await StorageService.updateEditorDraft(draftId, {
+      article: message.data?.article,
+      selectedDatabaseId: message.data?.selectedDatabaseId,
+    });
+
+    if (!updated) {
+      throw new Error('Draft not found');
+    }
+
+    sendResponse({ success: true, draft: updated });
+  } catch (error) {
+    console.error('Update editor draft error:', error);
+    sendResponse({
+      success: false,
+      error: error instanceof Error ? error.message : 'Failed to update editor draft',
+    });
+  }
+}
+
+async function handleGetEditorDraftByUrl(
+  message: ChromeMessage,
+  sender: chrome.runtime.MessageSender,
+  sendResponse: (response: { success: boolean; draft?: EditorDraft; error?: string }) => void
+) {
+  try {
+    const url = message.data?.url;
+    if (!url) {
+      throw new Error('url is required');
+    }
+
+    const draft = await StorageService.getLatestEditorDraftByUrl(url);
+    if (!draft) {
+      sendResponse({ success: true });
+      return;
+    }
+
+    sendResponse({ success: true, draft });
+  } catch (error) {
+    console.error('Get editor draft by url error:', error);
+    sendResponse({
+      success: false,
+      error: error instanceof Error ? error.message : 'Failed to get editor draft by url',
     });
   }
 }

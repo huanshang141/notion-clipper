@@ -1,296 +1,148 @@
 import { useEffect, useMemo, useState } from 'react';
+import { marked } from 'marked';
+import TurndownService from 'turndown';
 import { sendToBackground } from '../utils/ipc';
-import StorageService from '../services/storage';
-import {
-  ExtractedArticle,
-  NotionDatabase,
-  NotionProperty,
-  NotionAuthToken,
-} from '../types';
-import LoginForm from '../popup/LoginForm';
-import SaveForm from '../popup/SaveForm';
 
-interface EditorState {
-  isCheckingAuth: boolean;
-  isAuthenticated: boolean;
-  token?: NotionAuthToken;
-  isExtracting: boolean;
-  article?: ExtractedArticle;
-  databases: NotionDatabase[];
-  selectedDatabaseId?: string;
-  databaseSchema?: NotionProperty[];
-  isSaving: boolean;
-  message?: string;
-  messageType?: 'success' | 'error' | 'info';
+const turndownService = new TurndownService({
+  headingStyle: 'atx',
+  codeBlockStyle: 'fenced',
+});
+turndownService.remove(['script', 'style']);
+
+function sanitizeHtml(html: string): string {
+  const parser = new DOMParser();
+  const doc = parser.parseFromString(html || '', 'text/html');
+  const blockedTags = ['script', 'style', 'iframe', 'object', 'embed', 'noscript'];
+
+  blockedTags.forEach((tag) => {
+    doc.querySelectorAll(tag).forEach((el) => el.remove());
+  });
+
+  doc.querySelectorAll('*').forEach((el) => {
+    Array.from(el.attributes).forEach((attr) => {
+      const name = attr.name.toLowerCase();
+      const value = attr.value.trim().toLowerCase();
+
+      if (name.startsWith('on')) {
+        el.removeAttribute(attr.name);
+      }
+
+      if ((name === 'src' || name === 'href') && value.startsWith('javascript:')) {
+        el.removeAttribute(attr.name);
+      }
+    });
+  });
+
+  return doc.body.innerHTML;
 }
 
-function getDraftIdFromUrl(): string | null {
+function getDraftId(): string | null {
   const params = new URLSearchParams(window.location.search);
   return params.get('draftId');
 }
 
 export default function EditorApp() {
-  const draftId = useMemo(() => getDraftIdFromUrl(), []);
-  const [state, setState] = useState<EditorState>({
-    isCheckingAuth: true,
-    isAuthenticated: false,
-    databases: [],
-    isExtracting: false,
-    isSaving: false,
-  });
+  const draftId = useMemo(() => getDraftId(), []);
+  const [markdown, setMarkdown] = useState('');
+  const [html, setHtml] = useState('');
+  const [title, setTitle] = useState('');
+  const [status, setStatus] = useState('Loading draft...');
 
   useEffect(() => {
-    void initialize();
+    void loadDraft();
   }, []);
 
-  const initialize = async () => {
-    try {
-      const authStatus = await sendToBackground<any>({ action: 'GET_AUTH_STATUS' });
-      setState((prev) => ({
-        ...prev,
-        isCheckingAuth: false,
-        isAuthenticated: authStatus.isAuthenticated,
-        token: authStatus.token,
-      }));
-
-      if (!authStatus.isAuthenticated) {
-        return;
-      }
-
-      let preferredDatabaseId: string | undefined;
-      if (draftId) {
-        const draftResponse = await sendToBackground<any>({
-          action: 'GET_EDITOR_DRAFT',
-          data: { draftId },
-        });
-
-        if (draftResponse.success && draftResponse.draft?.article) {
-          preferredDatabaseId = draftResponse.draft.selectedDatabaseId;
-          setState((prev) => ({
-            ...prev,
-            article: draftResponse.draft.article,
-          }));
-        }
-      }
-
-      await loadDatabases(preferredDatabaseId);
-
-      setState((prev) => {
-        if (prev.article) {
-          return prev;
-        }
-        return {
-          ...prev,
-          message: 'No draft found, extracting from current page...',
-          messageType: 'info',
-        };
-      });
-
-      setTimeout(() => {
-        setState((prev) => {
-          if (prev.article) {
-            return prev;
-          }
-          void extractContent();
-          return prev;
-        });
-      }, 0);
-    } catch (error) {
-      setState((prev) => ({
-        ...prev,
-        isCheckingAuth: false,
-        message: error instanceof Error ? error.message : 'Failed to initialize editor',
-        messageType: 'error',
-      }));
-    }
-  };
-
-  const loadDatabases = async (preferredDatabaseId?: string) => {
-    const response = await sendToBackground<any>({ action: 'GET_DATABASES' });
-
-    if (response.databases && response.databases.length > 0) {
-      const lastDb = await StorageService.getLastDatabase();
-      const selectedId = preferredDatabaseId || lastDb?.id || response.databases[0].id;
-
-      setState((prev) => ({
-        ...prev,
-        databases: response.databases,
-        selectedDatabaseId: selectedId,
-      }));
-
-      await loadDatabaseSchema(selectedId);
-    }
-  };
-
-  const loadDatabaseSchema = async (databaseId: string) => {
-    const response = await sendToBackground<any>({
-      action: 'GET_DATABASE_SCHEMA',
-      data: { databaseId },
-    });
-
-    setState((prev) => ({
-      ...prev,
-      selectedDatabaseId: databaseId,
-      databaseSchema: response.properties,
-    }));
-  };
-
-  const extractContent = async () => {
-    setState((prev) => ({ ...prev, isExtracting: true }));
-
-    try {
-      const response = await sendToBackground<any>({ action: 'EXTRACT_CONTENT' });
-      if (response.success && response.article) {
-        setState((prev) => ({
-          ...prev,
-          article: response.article,
-          message: 'Content extracted successfully',
-          messageType: 'success',
-        }));
-      } else {
-        throw new Error(response.error || 'Extraction failed');
-      }
-    } catch (error) {
-      setState((prev) => ({
-        ...prev,
-        message: error instanceof Error ? error.message : 'Failed to extract content',
-        messageType: 'error',
-      }));
-    } finally {
-      setState((prev) => ({ ...prev, isExtracting: false }));
-    }
-  };
-
-  const handleLogin = async (apiKey: string) => {
-    try {
-      const response = await sendToBackground<any>({
-        action: 'AUTHENTICATE',
-        data: { apiKey },
-      });
-
-      if (!response.success || !response.token) {
-        throw new Error(response.error || 'Authentication failed');
-      }
-
-      setState((prev) => ({
-        ...prev,
-        isAuthenticated: true,
-        token: response.token,
-        message: 'Successfully authenticated',
-        messageType: 'success',
-      }));
-
-      await loadDatabases();
-      await extractContent();
-    } catch (error) {
-      setState((prev) => ({
-        ...prev,
-        message: error instanceof Error ? error.message : 'Authentication failed',
-        messageType: 'error',
-      }));
-    }
-  };
-
-  const handleSave = async (fieldMapping: Record<string, any>, articleToSave: ExtractedArticle) => {
-    if (!articleToSave || !state.selectedDatabaseId) {
+  const loadDraft = async () => {
+    if (!draftId) {
+      setStatus('Missing draftId');
       return;
     }
 
-    setState((prev) => ({ ...prev, isSaving: true, message: undefined }));
-
-    try {
-      const response = await sendToBackground<any>({
-        action: 'SAVE_TO_NOTION',
-        data: {
-          article: articleToSave,
-          databaseId: state.selectedDatabaseId,
-          fieldMapping,
-          shouldDownloadImages: true,
-        },
-      });
-
-      if (!response.success) {
-        throw new Error(response.error || 'Save failed');
-      }
-
-      setState((prev) => ({
-        ...prev,
-        message: `Saved to Notion! ${response.url ? `Open: ${response.url}` : ''}`,
-        messageType: 'success',
-      }));
-    } catch (error) {
-      setState((prev) => ({
-        ...prev,
-        message: error instanceof Error ? error.message : 'Failed to save',
-        messageType: 'error',
-      }));
-    } finally {
-      setState((prev) => ({ ...prev, isSaving: false }));
-    }
-  };
-
-  const handleLogout = async () => {
-    await sendToBackground({ action: 'LOGOUT' });
-    setState({
-      isCheckingAuth: false,
-      isAuthenticated: false,
-      databases: [],
-      isExtracting: false,
-      isSaving: false,
+    const response = await sendToBackground<any>({
+      action: 'GET_EDITOR_DRAFT',
+      data: { draftId },
     });
+
+    if (!response.success || !response.draft?.article) {
+      setStatus(response.error || 'Draft not found');
+      return;
+    }
+
+    const article = response.draft.article;
+    const initialMarkdown = article.content || '';
+    setTitle(article.title || 'Untitled');
+    setMarkdown(initialMarkdown);
+    setHtml(sanitizeHtml(marked.parse(initialMarkdown) as string));
+    setStatus('Draft loaded');
   };
 
-  if (state.isCheckingAuth) {
-    return (
-      <div className="popup-container">
-        <div className="loading">Loading editor...</div>
-      </div>
-    );
-  }
+  const handleEditorInput = (nextHtml: string) => {
+    const sanitized = sanitizeHtml(nextHtml);
+    const nextMarkdown = turndownService.turndown(sanitized);
+    setHtml(sanitized);
+    setMarkdown(nextMarkdown);
+  };
 
-  if (!state.isAuthenticated) {
-    return (
-      <div className="popup-container">
-        <LoginForm onSubmit={handleLogin} />
-      </div>
-    );
-  }
+  const saveDraft = async () => {
+    if (!draftId) {
+      return;
+    }
+
+    const response = await sendToBackground<any>({
+      action: 'UPDATE_EDITOR_DRAFT',
+      data: {
+        draftId,
+        article: {
+          title,
+          content: markdown,
+          rawHtml: html,
+          contentFormat: 'markdown',
+        },
+      },
+    });
+
+    if (!response.success) {
+      setStatus(response.error || 'Failed to save draft');
+      return;
+    }
+
+    setStatus('Draft saved. You can return to extension popup and click Try Again to reload.');
+  };
 
   return (
     <div className="popup-container">
       <div className="popup-header">
-        <h2>Notion Editor</h2>
-        <button className="logout-btn" onClick={handleLogout} title="Logout">
-          ⊗
-        </button>
+        <h2>Content Editor</h2>
       </div>
 
-      {state.message && (
-        <div className={`message message-${state.messageType}`}>
-          {state.message}
-        </div>
-      )}
+      <div className="message message-info" style={{ marginTop: 0 }}>
+        {status}
+      </div>
 
-      {state.isExtracting ? (
-        <div className="loading">Extracting content...</div>
-      ) : state.article ? (
-        <SaveForm
-          article={state.article}
-          databases={state.databases}
-          selectedDatabaseId={state.selectedDatabaseId}
-          databaseSchema={state.databaseSchema}
-          isSaving={state.isSaving}
-          onDatabaseChange={(databaseId) => {
-            void loadDatabaseSchema(databaseId);
-          }}
-          onSave={handleSave}
-        />
-      ) : (
-        <div className="no-article">
-          <p>No content to edit</p>
-          <button onClick={() => void extractContent()}>Extract Again</button>
+      <div className="form-group" style={{ padding: '16px 16px 0' }}>
+        <label>Title (read-only)</label>
+        <input type="text" value={title} readOnly />
+      </div>
+
+      <div className="form-group" style={{ padding: '0 16px' }}>
+        <label>Content (WYSIWYG edit + markdown sync)</label>
+        <div className="live-editor-grid">
+          <div
+            className="live-editor-textarea"
+            contentEditable
+            suppressContentEditableWarning
+            dangerouslySetInnerHTML={{ __html: html }}
+            onInput={(e) => handleEditorInput((e.currentTarget as HTMLDivElement).innerHTML)}
+          />
+          <div className="live-editor-preview" dangerouslySetInnerHTML={{ __html: html }} />
         </div>
-      )}
+      </div>
+
+      <div className="form-actions" style={{ margin: '16px' }}>
+        <button type="button" className="save-btn" onClick={() => void saveDraft()}>
+          Save Content Draft
+        </button>
+      </div>
     </div>
   );
 }

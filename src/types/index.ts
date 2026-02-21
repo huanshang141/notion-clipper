@@ -165,6 +165,7 @@ export interface EditorDraft {
   article: ExtractedArticle;
   selectedDatabaseId?: string;
   createdAt: number;
+  updatedAt?: number;
 }
 
 /**
