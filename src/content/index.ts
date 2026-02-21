@@ -3,7 +3,7 @@ import TurndownService from 'turndown';
 import { marked } from 'marked';
 import { MESSAGE_ACTIONS } from '../utils/constants';
 import { sendToBackground } from '../utils/ipc';
-import { ExtractedArticle } from '../types';
+import { ExtractedArticle, InlineEditorDraftResponse } from '../types';
 import StorageService from '../services/storage';
 
 console.log('[NotionClipper] Content script loaded');
@@ -14,11 +14,8 @@ let inlineEditorEditable: HTMLDivElement | null = null;
 let inlineEditorStatus: HTMLSpanElement | null = null;
 let inlineEditorArticle: ExtractedArticle | null = null;
 let inlineEditorSelectedDatabaseId: string | undefined;
-
-type InlineEditorDraftResponse = {
-  success?: boolean;
-  error?: string;
-};
+let inlineEditorSaveToNotionButton: HTMLButtonElement | null = null;
+let isSavingInlineEditorToNotion = false;
 
 const inlineEditorTurndown = new TurndownService({
   headingStyle: 'atx',
@@ -226,6 +223,7 @@ async function openInlineEditor(article: ExtractedArticle, selectedDatabaseId?: 
   saveToNotionButton.type = 'button';
   saveToNotionButton.textContent = 'Save to Notion';
   applyButtonStyle(saveToNotionButton, 'var(--nc-btn-primary-bg)', 'var(--nc-btn-primary-text)');
+  inlineEditorSaveToNotionButton = saveToNotionButton;
 
   const body = document.createElement('div');
   body.style.flex = '1';
@@ -327,6 +325,8 @@ function closeInlineEditor() {
     inlineEditorRoot = null;
     inlineEditorEditable = null;
     inlineEditorStatus = null;
+    inlineEditorSaveToNotionButton = null;
+    isSavingInlineEditorToNotion = false;
   }
 
   if (inlineEditorShadowHost) {
@@ -452,6 +452,13 @@ function getInlineEditorContent(): ExtractedArticle | null {
 }
 
 async function saveInlineEditorToNotion() {
+  if (isSavingInlineEditorToNotion) {
+    if (inlineEditorStatus) {
+      inlineEditorStatus.textContent = '正在保存到 Notion，请稍候...';
+    }
+    return;
+  }
+
   const editorContent = getInlineEditorContent();
   if (!editorContent) {
     return;
@@ -465,6 +472,14 @@ async function saveInlineEditorToNotion() {
   }
 
   try {
+    isSavingInlineEditorToNotion = true;
+    if (inlineEditorSaveToNotionButton) {
+      inlineEditorSaveToNotionButton.disabled = true;
+      inlineEditorSaveToNotionButton.style.opacity = '0.7';
+      inlineEditorSaveToNotionButton.style.cursor = 'not-allowed';
+      inlineEditorSaveToNotionButton.textContent = 'Saving...';
+    }
+
     if (inlineEditorStatus) {
       inlineEditorStatus.textContent = '正在保存到 Notion...';
     }
@@ -510,8 +525,18 @@ async function saveInlineEditorToNotion() {
       }
     }
   } catch (error) {
+    console.error('[NotionClipper] saveInlineEditorToNotion failed', error);
+
     if (inlineEditorStatus) {
       inlineEditorStatus.textContent = error instanceof Error ? error.message : '保存到 Notion 失败';
+    }
+  } finally {
+    isSavingInlineEditorToNotion = false;
+    if (inlineEditorSaveToNotionButton) {
+      inlineEditorSaveToNotionButton.disabled = false;
+      inlineEditorSaveToNotionButton.style.opacity = '1';
+      inlineEditorSaveToNotionButton.style.cursor = 'pointer';
+      inlineEditorSaveToNotionButton.textContent = 'Save to Notion';
     }
   }
 }
