@@ -41,10 +41,27 @@ jobs:
           fi
           echo "Build successful!"
 
+      - name: Prepare extension package
+        run: |
+          mkdir -p artifacts/ci-extension
+          cp -R dist/. artifacts/ci-extension/
+
+          if [ -d "images" ]; then
+            mkdir -p artifacts/ci-extension/images
+            cp -R images/. artifacts/ci-extension/images/
+          fi
+
+          find artifacts/ci-extension -type f \( -name "*.map" -o -name "*.d.ts" -o -name "*.d.ts.map" \) -delete
+
+          if [ ! -f "artifacts/ci-extension/manifest.json" ]; then
+            echo "Package failed: manifest.json not found in package root"
+            exit 1
+          fi
+
       - name: Upload build artifact
         uses: actions/upload-artifact@v4
         with:
-          name: notion-clipper-ci-${{ github.sha }}
-          path: dist
+          name: notion-clipper-ci-${{ github.sha }}.zip
+          path: artifacts/ci-extension
           if-no-files-found: error
           retention-days: 14
