@@ -1,6 +1,6 @@
 {
   "manifest_version": 3,
-  "name": "Save to Notion",
+  "name": "Notion Clipper",
   "version": "0.1.0",
   "description": "Save web content to Notion with a single click",
   "permissions": [

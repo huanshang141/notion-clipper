@@ -215,6 +215,11 @@ async function openInlineEditor(article: any, selectedDatabaseId?: string) {
   restoreButton.textContent = 'Restore Selection';
   applyButtonStyle(restoreButton, 'var(--nc-btn-tertiary-bg)', 'var(--nc-btn-tertiary-text)');
 
+  const saveToNotionButton = document.createElement('button');
+  saveToNotionButton.type = 'button';
+  saveToNotionButton.textContent = 'Save to Notion';
+  applyButtonStyle(saveToNotionButton, 'var(--nc-btn-primary-bg)', 'var(--nc-btn-primary-text)');
+
   const body = document.createElement('div');
   body.style.flex = '1';
   body.style.padding = '16px';
@@ -253,8 +258,13 @@ async function openInlineEditor(article: any, selectedDatabaseId?: string) {
     restoreSelectionToMarkdown(editor);
   });
 
+  saveToNotionButton.addEventListener('click', () => {
+    void saveInlineEditorToNotion();
+  });
+
   document.addEventListener('keydown', handleInlineEditorKeydown, true);
 
+  actions.appendChild(saveToNotionButton);
   actions.appendChild(restoreButton);
   actions.appendChild(saveButton);
   actions.appendChild(closeButton);
@@ -388,24 +398,17 @@ function sanitizeHtml(html: string): string {
 }
 
 async function saveInlineEditorDraft() {
-  if (!inlineEditorEditable || !inlineEditorArticle) {
+  const editorContent = getInlineEditorContent();
+  if (!editorContent) {
     return;
   }
-
-  const html = sanitizeHtml(inlineEditorEditable.innerHTML || '');
-  const markdown = inlineEditorTurndown.turndown(html);
 
   const response = await chrome.runtime.sendMessage({
     action: MESSAGE_ACTIONS.UPDATE_EDITOR_DRAFT_BY_URL,
     data: {
-      url: inlineEditorArticle.url,
+      url: inlineEditorArticle!.url,
       selectedDatabaseId: inlineEditorSelectedDatabaseId,
-      article: {
-        ...inlineEditorArticle,
-        content: markdown,
-        rawHtml: html,
-        contentFormat: 'markdown',
-      },
+      article: editorContent,
     },
   });
 
@@ -418,6 +421,86 @@ async function saveInlineEditorDraft() {
 
   if (inlineEditorStatus) {
     inlineEditorStatus.textContent = response?.error || '保存失败，请重试';
+  }
+}
+
+function getInlineEditorContent() {
+  if (!inlineEditorEditable || !inlineEditorArticle) {
+    return null;
+  }
+
+  const html = sanitizeHtml(inlineEditorEditable.innerHTML || '');
+  const markdown = inlineEditorTurndown.turndown(html);
+
+  return {
+    ...inlineEditorArticle,
+    content: markdown,
+    rawHtml: html,
+    contentFormat: 'markdown',
+  };
+}
+
+async function saveInlineEditorToNotion() {
+  const editorContent = getInlineEditorContent();
+  if (!editorContent) {
+    return;
+  }
+
+  if (!inlineEditorSelectedDatabaseId) {
+    if (inlineEditorStatus) {
+      inlineEditorStatus.textContent = '未选择数据库，请先在插件弹窗中选择数据库';
+    }
+    return;
+  }
+
+  try {
+    if (inlineEditorStatus) {
+      inlineEditorStatus.textContent = '正在保存到 Notion...';
+    }
+
+    const fieldMappingResponse = await chrome.runtime.sendMessage({
+      action: MESSAGE_ACTIONS.GET_AUTO_FIELD_MAPPING,
+      data: {
+        databaseId: inlineEditorSelectedDatabaseId,
+      },
+    });
+
+    if (fieldMappingResponse?.error) {
+      throw new Error(fieldMappingResponse.error);
+    }
+
+    const saveResponse = await chrome.runtime.sendMessage({
+      action: MESSAGE_ACTIONS.SAVE_TO_NOTION,
+      data: {
+        article: editorContent,
+        databaseId: inlineEditorSelectedDatabaseId,
+        fieldMapping: fieldMappingResponse?.fieldMapping || {},
+        shouldDownloadImages: true,
+      },
+    });
+
+    if (!saveResponse?.success) {
+      throw new Error(saveResponse?.error || '保存到 Notion 失败');
+    }
+
+    await chrome.runtime.sendMessage({
+      action: MESSAGE_ACTIONS.UPDATE_EDITOR_DRAFT_BY_URL,
+      data: {
+        url: inlineEditorArticle!.url,
+        selectedDatabaseId: inlineEditorSelectedDatabaseId,
+        article: editorContent,
+      },
+    });
+
+    if (inlineEditorStatus) {
+      inlineEditorStatus.textContent = saveResponse.url
+        ? `已保存到 Notion：${saveResponse.url}`
+        : '已保存到 Notion';
+    }
+  } catch (error) {
+    if (inlineEditorStatus) {
+      inlineEditorStatus.textContent = error instanceof Error ? error.message : '保存到 Notion 失败';
+    }
   }
 }
 

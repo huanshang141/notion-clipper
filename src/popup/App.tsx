@@ -358,7 +358,7 @@ export default function App() {
   return (
     <div className="popup-container">
       <div className="popup-header">
-        <h2>Save to Notion</h2>
+        <h2>Notion Clipper</h2>
         <div className="header-actions">
           <button
             className="theme-toggle-btn"
