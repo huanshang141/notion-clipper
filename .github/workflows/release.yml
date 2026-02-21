@@ -68,8 +68,10 @@ jobs:
       - name: Upload artifact
         uses: actions/upload-artifact@v4
         with:
-          name: notion-clipper
+          name: notion-clipper-${{ needs.meta.outputs.tag }}
           path: notion-clipper-${{ needs.meta.outputs.tag }}.zip
+          if-no-files-found: error
+          retention-days: 30
 
   changelog:
     name: Generate changelog
@@ -104,7 +106,7 @@ jobs:
     steps:
       - uses: actions/download-artifact@v4
         with:
-          name: notion-clipper
+          name: notion-clipper-${{ needs.meta.outputs.tag }}
           path: assets
 
       - name: Create Release

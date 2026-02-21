@@ -40,3 +40,17 @@ jobs:
             exit 1
           fi
           echo "Build successful!"
+
+      - name: Package extension
+        run: |
+          cd dist
+          zip -r ../notion-clipper-ci-${{ github.sha }}.zip .
+          cd ..
+
+      - name: Upload build artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: notion-clipper-ci-${{ github.sha }}
+          path: notion-clipper-ci-${{ github.sha }}.zip
+          if-no-files-found: error
+          retention-days: 14
