@@ -1,0 +1,95 @@
+name: Bug Report (English)
+description: Report a problem, error, or unexpected behavior
+labels: ["bug"]
+body:
+  - type: checkboxes
+    id: checks
+    attributes:
+      label: Before submitting...
+      description: |
+        Please confirm that you have completed the following requirements
+      options:
+        - label: I understand that Issues are for reporting and solving problems, not for complaining, and I will provide as much information as possible to help solve the problem
+          required: true
+        - label: I have filled in a short and clear title so that developers can quickly identify the issue when browsing the Issue list
+          required: true
+        - label: I am using the latest version, and have checked the latest release notes and unreleased updates to confirm that this bug has not been fixed
+          required: true
+        - label: I have checked Pinned Issues, Open Issues, and Closed Issues to confirm that my problem has not been mentioned
+          required: true
+  - type: textarea
+    id: describe
+    attributes:
+      label: Problem Description
+      description: Please describe the problem you encountered in detail
+      placeholder: |
+        e.g., After clicking the save button, the extension has no response...
+    validations:
+      required: true
+  - type: textarea
+    id: reproduce
+    attributes:
+      label: Steps to Reproduce
+      description: Please provide detailed steps to reproduce the issue
+      placeholder: |
+        1. Open a webpage
+        2. Click the extension icon
+        3. Select an option
+        4. Click save
+        5. Error occurs...
+    validations:
+      required: true
+  - type: textarea
+    id: expected
+    attributes:
+      label: Expected Behavior
+      description: Describe what you expected to happen
+      placeholder: |
+        e.g., Should successfully save to Notion and show a success message...
+    validations:
+      required: true
+  - type: textarea
+    id: version
+    attributes:
+      label: Version Information
+      description: Please provide relevant version information
+      placeholder: |
+        - Extension Version: v0.1.0
+        - Browser: Chrome 120 / Firefox 121 / Edge 120
+        - Operating System: Windows 11 / macOS 14 / Linux Ubuntu 22.04
+    validations:
+      required: true
+  - type: textarea
+    id: logs
+    attributes:
+      label: Log Information
+      description: |
+        If there are error logs, please provide them. You can view them in the browser's developer tools console
+        - Chrome/Edge: Press F12 to open developer tools, switch to Console tab
+        - Firefox: Press F12 to open developer tools, switch to Console tab
+
+        Please copy the complete error message directly rather than taking a screenshot
+      placeholder: |
+        e.g.:
+        Error: Failed to save to Notion
+            at NotionService.save (notion.ts:123)
+            ...
+    validations:
+      required: false
+  - type: textarea
+    id: screenshots
+    attributes:
+      label: Screenshots or Screen Recording
+      description: |
+        If applicable, add screenshots or screen recordings to help explain the problem
+        You can drag and drop image or video files here
+    validations:
+      required: false
+  - type: textarea
+    id: additional
+    attributes:
+      label: Additional Information
+      description: |
+        Any other information that might help solve the problem
+    validations:
+      required: false

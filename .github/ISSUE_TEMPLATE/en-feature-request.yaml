@@ -1,0 +1,53 @@
+name: Feature Request (English)
+description: Suggest a new feature or improvement
+labels: ["enhancement"]
+body:
+  - type: checkboxes
+    id: checks
+    attributes:
+      label: Before submitting...
+      options:
+        - label: I have filled in a short and clear title so that developers can quickly understand the suggestion
+          required: true
+        - label: I am reasonably sure this is a new feature/improvement suggestion, not a bug
+          required: true
+        - label: I am using the latest version, and have checked the latest release notes and unreleased updates to confirm that my suggestion has not been mentioned
+          required: true
+        - label: I have checked Pinned Issues, Open Issues, and Closed Issues to confirm that my suggestion has not been mentioned
+          required: true
+  - type: textarea
+    id: problem
+    attributes:
+      label: What problem are you trying to solve?
+      description: Please describe the problem or pain point you want to solve
+      placeholder: |
+        e.g., Every time I save a page, I need to manually select the Notion database, which is inconvenient...
+    validations:
+      required: false
+  - type: textarea
+    id: solution
+    attributes:
+      label: What is your expected solution?
+      description: Please describe the feature or improvement you want
+      placeholder: |
+        e.g., I hope to be able to set a default database, and automatically use the default database when saving without manual selection...
+    validations:
+      required: true
+  - type: textarea
+    id: alternatives
+    attributes:
+      label: Have you considered any alternative solutions?
+      description: If there are other possible implementation methods, please describe them
+      placeholder: |
+        e.g., Could also remember the last selected database as the default option for next time...
+    validations:
+      required: false
+  - type: textarea
+    id: additional
+    attributes:
+      label: Additional Context
+      description: |
+        Any other background, screenshots, or references about this feature request
+        For example, you can provide implementations from similar tools as reference
+    validations:
+      required: false

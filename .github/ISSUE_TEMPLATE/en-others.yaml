@@ -1,0 +1,29 @@
+name: Other Issues (English)
+description: Other types of questions, inquiries, or discussions
+labels: ["question"]
+body:
+  - type: checkboxes
+    id: checks
+    attributes:
+      label: Before submitting...
+      options:
+        - label: I have filled in a short and clear title
+          required: true
+        - label: I have read the documentation and README
+          required: true
+        - label: I have checked Pinned Issues, Open Issues, and Closed Issues to confirm that my question has not been mentioned
+          required: true
+  - type: textarea
+    id: content
+    attributes:
+      label: Question Description
+      description: Please describe your question, inquiry, or discussion topic
+    validations:
+      required: true
+  - type: textarea
+    id: additional
+    attributes:
+      label: Additional Information
+      description: Any other information that helps understand your question
+    validations:
+      required: false

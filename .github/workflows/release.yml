@@ -1,0 +1,117 @@
+name: Build and Release
+
+on:
+  push:
+    tags:
+      - "v*"
+  workflow_dispatch:
+
+jobs:
+  meta:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+      - id: set_tag
+        run: |
+          is_release=${{ startsWith(github.ref, 'refs/tags/v') }}
+          tag=$(git describe --tags --match "v*" ${{ github.ref }} || true)
+
+          if [[ $tag != v* ]]; then
+            tag=$(curl -sX GET "https://api.github.com/repos/${{ github.repository }}/releases/latest" --header 'authorization: Bearer ${{ secrets.GITHUB_TOKEN }}' | awk '/tag_name/{print $4}' FS='["]')
+            if [[ $tag != v* ]]; then
+              tag="v0.0.0"
+            fi
+            tag=$(date "+$tag-%y%m%d-$(git rev-parse --short HEAD)")
+          fi
+
+          # 检查是否为预发布版本
+          is_prerelease=false
+          if [[ $tag =~ .*alpha.* || $tag =~ .*beta.* || $tag =~ .*rc.* || $tag =~ .*dev.* ]]; then
+            is_prerelease=true
+            echo "This is a pre-release version"
+          fi
+
+          echo "tag=$tag" | tee -a $GITHUB_OUTPUT
+          echo "is_release=$is_release" | tee -a $GITHUB_OUTPUT
+          echo "is_prerelease=$is_prerelease" | tee -a $GITHUB_OUTPUT
+    outputs:
+      tag: ${{ steps.set_tag.outputs.tag }}
+      is_release: ${{ steps.set_tag.outputs.is_release }}
+      is_prerelease: ${{ steps.set_tag.outputs.is_prerelease }}
+
+  build:
+    needs: meta
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: "18"
+          cache: "npm"
+
+      - name: Install dependencies
+        run: npm ci
+
+      - name: Build extension
+        run: npm run build
+
+      - name: Package extension
+        run: |
+          cd dist
+          zip -r ../notion-clipper-${{ needs.meta.outputs.tag }}.zip .
+          cd ..
+
+      - name: Upload artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: notion-clipper
+          path: notion-clipper-${{ needs.meta.outputs.tag }}.zip
+
+  changelog:
+    name: Generate changelog
+    needs: meta
+    runs-on: ubuntu-latest
+    outputs:
+      release_body: ${{ steps.git-cliff.outputs.content }}
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Generate a changelog
+        uses: orhun/git-cliff-action@v4
+        id: git-cliff
+        with:
+          config: .github/cliff.toml
+          args: >-
+            -vv --latest --strip header
+            ${{ needs.meta.outputs.is_prerelease == 'false' && '--tag-pattern "^v[0-9]+\\.[0-9]+\\.[0-9]+$"' || '' }}
+        env:
+          OUTPUT: CHANGES.md
+          GITHUB_REPO: ${{ github.repository }}
+
+  release:
+    if: ${{ needs.meta.outputs.is_release == 'true' }}
+    needs: [meta, build, changelog]
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+    steps:
+      - uses: actions/download-artifact@v4
+        with:
+          name: notion-clipper
+          path: assets
+
+      - name: Create Release
+        uses: softprops/action-gh-release@v2
+        with:
+          files: assets/notion-clipper-${{ needs.meta.outputs.tag }}.zip
+          tag_name: ${{ needs.meta.outputs.tag }}
+          body: ${{ needs.changelog.outputs.release_body }}
+          draft: false
+          prerelease: ${{ needs.meta.outputs.is_prerelease == 'true' }}
