@@ -2,6 +2,7 @@ import { Readability } from '@mozilla/readability';
 import TurndownService from 'turndown';
 import { marked } from 'marked';
 import { MESSAGE_ACTIONS } from '../utils/constants';
+import StorageService from '../services/storage';
 
 console.log('[NotionClipper] Content script loaded');
 
@@ -17,6 +18,20 @@ const inlineEditorTurndown = new TurndownService({
   codeBlockStyle: 'fenced',
 });
 inlineEditorTurndown.remove(['script', 'style']);
+
+async function getCurrentTheme(): Promise<'light' | 'dark'> {
+  try {
+    const savedTheme = await StorageService.getSetting('theme');
+    if (savedTheme === 'dark' || savedTheme === 'light') {
+      return savedTheme;
+    }
+  } catch {
+  }
+
+  return window.matchMedia && window.matchMedia('(prefers-color-scheme: dark)').matches
+    ? 'dark'
+    : 'light';
+}
 
 // Handle messages from background script
 chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
@@ -48,25 +63,28 @@ chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
   }
 
   if (message.action === MESSAGE_ACTIONS.OPEN_INLINE_EDITOR) {
-    try {
-      openInlineEditor(message.data?.article, message.data?.selectedDatabaseId);
-      sendResponse({ success: true });
-    } catch (error) {
-      sendResponse({
-        success: false,
-        error: error instanceof Error ? error.message : 'Failed to open inline editor',
+    openInlineEditor(message.data?.article, message.data?.selectedDatabaseId)
+      .then(() => {
+        sendResponse({ success: true });
+      })
+      .catch((error) => {
+        sendResponse({
+          success: false,
+          error: error instanceof Error ? error.message : 'Failed to open inline editor',
+        });
       });
-    }
-    return false;
+    return true;
   }
 
   return false;
 });
 
-function openInlineEditor(article: any, selectedDatabaseId?: string) {
+async function openInlineEditor(article: any, selectedDatabaseId?: string) {
   if (!article) {
     throw new Error('Article is required for inline editor');
   }
+
+  const theme = await getCurrentTheme();
 
   inlineEditorArticle = article;
   inlineEditorSelectedDatabaseId = selectedDatabaseId;
@@ -112,7 +130,33 @@ function openInlineEditor(article: any, selectedDatabaseId?: string) {
       align-items: center;
       padding: 24px;
       color-scheme: light;
-      color: #111827;
+      color: var(--nc-text);
+      --nc-surface: #ffffff;
+      --nc-surface-muted: #f8fafc;
+      --nc-border: #e5e7eb;
+      --nc-text: #111827;
+      --nc-text-muted: #6b7280;
+      --nc-btn-primary-bg: #2563eb;
+      --nc-btn-primary-text: #ffffff;
+      --nc-btn-secondary-bg: #f3f4f6;
+      --nc-btn-secondary-text: #111827;
+      --nc-btn-tertiary-bg: #111827;
+      --nc-btn-tertiary-text: #ffffff;
+    }
+
+    .notion-clipper-inline-root[data-theme='dark'] {
+      color-scheme: dark;
+      --nc-surface: #1f2937;
+      --nc-surface-muted: #111827;
+      --nc-border: #374151;
+      --nc-text: #f3f4f6;
+      --nc-text-muted: #9ca3af;
+      --nc-btn-primary-bg: #3b82f6;
+      --nc-btn-primary-text: #f9fafb;
+      --nc-btn-secondary-bg: #374151;
+      --nc-btn-secondary-text: #f3f4f6;
+      --nc-btn-tertiary-bg: #4b5563;
+      --nc-btn-tertiary-text: #f9fafb;
     }
   `;
   shadowRoot.appendChild(style);
@@ -120,11 +164,12 @@ function openInlineEditor(article: any, selectedDatabaseId?: string) {
   const root = document.createElement('div');
   root.id = 'notion-clipper-inline-editor';
   root.className = 'notion-clipper-inline-root';
+  root.setAttribute('data-theme', theme);
 
   const panel = document.createElement('div');
   panel.style.width = 'min(1100px, 100%)';
   panel.style.height = 'min(90vh, 100%)';
-  panel.style.background = '#fff';
+  panel.style.background = 'var(--nc-surface)';
   panel.style.borderRadius = '12px';
   panel.style.display = 'flex';
   panel.style.flexDirection = 'column';
@@ -137,17 +182,17 @@ function openInlineEditor(article: any, selectedDatabaseId?: string) {
   header.style.alignItems = 'center';
   header.style.gap = '12px';
   header.style.padding = '14px 16px';
-  header.style.borderBottom = '1px solid #e5e7eb';
+  header.style.borderBottom = '1px solid var(--nc-border)';
 
   const title = document.createElement('div');
   title.style.fontSize = '16px';
   title.style.fontWeight = '600';
-  title.style.color = '#111827';
+  title.style.color = 'var(--nc-text)';
   title.textContent = `Preview & Edit: ${article.title || 'Untitled'}`;
 
   const status = document.createElement('span');
   status.style.fontSize = '12px';
-  status.style.color = '#6b7280';
+  status.style.color = 'var(--nc-text-muted)';
   status.textContent = '直接编辑渲染内容；框选后点击 Restore Selection 可还原 markdown 语法';
   inlineEditorStatus = status;
 
@@ -158,37 +203,37 @@ function openInlineEditor(article: any, selectedDatabaseId?: string) {
   const saveButton = document.createElement('button');
   saveButton.type = 'button';
   saveButton.textContent = 'Save Draft';
-  applyButtonStyle(saveButton, '#2563eb', '#ffffff');
+  applyButtonStyle(saveButton, 'var(--nc-btn-primary-bg)', 'var(--nc-btn-primary-text)');
 
   const closeButton = document.createElement('button');
   closeButton.type = 'button';
   closeButton.textContent = 'Close';
-  applyButtonStyle(closeButton, '#f3f4f6', '#111827');
+  applyButtonStyle(closeButton, 'var(--nc-btn-secondary-bg)', 'var(--nc-btn-secondary-text)');
 
   const restoreButton = document.createElement('button');
   restoreButton.type = 'button';
   restoreButton.textContent = 'Restore Selection';
-  applyButtonStyle(restoreButton, '#111827', '#ffffff');
+  applyButtonStyle(restoreButton, 'var(--nc-btn-tertiary-bg)', 'var(--nc-btn-tertiary-text)');
 
   const body = document.createElement('div');
   body.style.flex = '1';
   body.style.padding = '16px';
   body.style.overflow = 'auto';
-  body.style.background = '#f8fafc';
+  body.style.background = 'var(--nc-surface-muted)';
 
   const editor = document.createElement('div');
   editor.contentEditable = 'true';
   editor.style.minHeight = '100%';
   editor.style.padding = '16px';
-  editor.style.border = '1px solid #e5e7eb';
+  editor.style.border = '1px solid var(--nc-border)';
   editor.style.borderRadius = '8px';
-  editor.style.background = '#ffffff';
+  editor.style.background = 'var(--nc-surface)';
   editor.style.fontSize = '15px';
   editor.style.lineHeight = '1.65';
   editor.style.outline = 'none';
   editor.style.whiteSpace = 'normal';
   editor.style.wordBreak = 'break-word';
-  editor.style.color = '#111827';
+  editor.style.color = 'var(--nc-text)';
   editor.innerHTML = sanitizeHtml(marked.parse(article.content || '') as string);
   inlineEditorEditable = editor;
 
@@ -206,12 +251,6 @@ function openInlineEditor(article: any, selectedDatabaseId?: string) {
 
   restoreButton.addEventListener('click', () => {
     restoreSelectionToMarkdown(editor);
-  });
-
-  root.addEventListener('click', (event) => {
-    if (event.target === root) {
-      closeInlineEditor();
-    }
   });
 
   document.addEventListener('keydown', handleInlineEditorKeydown, true);
@@ -262,7 +301,6 @@ function handleInlineEditorKeydown(event: KeyboardEvent) {
 
   if (event.key === 'Escape') {
     event.preventDefault();
-    closeInlineEditor();
   }
 }
 

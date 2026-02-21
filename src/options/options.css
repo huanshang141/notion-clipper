@@ -11,6 +11,29 @@
   --text-color: #333333;
   --text-light: #666666;
   --shadow: 0 2px 8px rgba(0, 0, 0, 0.1);
+  --auth-bg: #f0f7ff;
+  --auth-border: #b3d9ff;
+  --button-muted-bg: #f0f0f0;
+  --button-muted-bg-hover: #e0e0e0;
+  --thumb-hover: #cccccc;
+}
+
+:root[data-theme='dark'] {
+  --primary-color: #3b82f6;
+  --success-color: #22c55e;
+  --error-color: #ef4444;
+  --warning-color: #f59e0b;
+  --background: #111827;
+  --surface: #1f2937;
+  --border-color: #374151;
+  --text-color: #f3f4f6;
+  --text-light: #9ca3af;
+  --shadow: 0 2px 10px rgba(0, 0, 0, 0.35);
+  --auth-bg: #0f223f;
+  --auth-border: #1d4d8f;
+  --button-muted-bg: #374151;
+  --button-muted-bg-hover: #4b5563;
+  --thumb-hover: #6b7280;
 }
 
 * {
@@ -132,8 +155,8 @@ body {
   justify-content: space-between;
   align-items: center;
   padding: 16px;
-  background: #f0f7ff;
-  border: 1px solid #b3d9ff;
+  background: var(--auth-bg);
+  border: 1px solid var(--auth-border);
   border-radius: 6px;
 }
 
@@ -181,6 +204,21 @@ body {
   font-size: 14px;
   font-family: inherit;
   transition: border-color 0.2s ease;
+}
+
+.setting-item select {
+  min-width: 140px;
+  padding: 8px 10px;
+  border: 1px solid var(--border-color);
+  border-radius: 4px;
+  background: var(--surface);
+  color: var(--text-color);
+  font-size: 13px;
+}
+
+.setting-item select:focus {
+  outline: none;
+  border-color: var(--primary-color);
 }
 
 .form-group input:focus {
@@ -296,13 +334,13 @@ body {
 }
 
 .btn-logout {
-  background: #f0f0f0;
+  background: var(--button-muted-bg);
   color: var(--text-color);
   border: 1px solid var(--border-color);
 }
 
 .btn-logout:hover {
-  background: #e0e0e0;
+  background: var(--button-muted-bg-hover);
 }
 
 .auth-actions {
@@ -384,5 +422,5 @@ body {
 }
 
 ::-webkit-scrollbar-thumb:hover {
-  background: #cccccc;
+  background: var(--thumb-hover);
 }

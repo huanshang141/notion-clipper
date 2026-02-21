@@ -239,5 +239,6 @@ export interface StorageData {
   settings?: {
     autoDownloadImages?: boolean;
     debugMode?: boolean;
+    theme?: 'light' | 'dark';
   };
 }

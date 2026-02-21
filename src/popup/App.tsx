@@ -39,6 +39,27 @@ export default function App() {
   }, []);
 
   useEffect(() => {
+    void applyTheme();
+
+    const handleStorageChange = (
+      changes: { [key: string]: chrome.storage.StorageChange },
+      areaName: string
+    ) => {
+      if (areaName !== 'sync') {
+        return;
+      }
+      if (changes.notion_clipper_data) {
+        void applyTheme();
+      }
+    };
+
+    chrome.storage.onChanged.addListener(handleStorageChange);
+    return () => {
+      chrome.storage.onChanged.removeListener(handleStorageChange);
+    };
+  }, []);
+
+  useEffect(() => {
     if (state.isAuthenticated && !state.article) {
       void extractContent();
     }
@@ -70,6 +91,16 @@ export default function App() {
             : 'Failed to check authentication status',
         messageType: 'error',
       }));
+    }
+  };
+
+  const applyTheme = async () => {
+    try {
+      const savedTheme = await StorageService.getSetting('theme');
+      const theme = savedTheme === 'dark' ? 'dark' : 'light';
+      document.documentElement.setAttribute('data-theme', theme);
+    } catch {
+      document.documentElement.setAttribute('data-theme', 'light');
     }
   };
 

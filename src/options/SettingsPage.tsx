@@ -17,6 +17,7 @@ export default function SettingsPage() {
   const [messageType, setMessageType] = useState<'success' | 'error' | 'info'>('info');
   const [autoDownloadImages, setAutoDownloadImages] = useState(true);
   const [debugMode, setDebugMode] = useState(false);
+  const [theme, setTheme] = useState<'light' | 'dark'>('light');
 
   useEffect(() => {
     loadSettings();
@@ -29,9 +30,13 @@ export default function SettingsPage() {
 
       const autoDownload = await StorageService.getSetting('autoDownloadImages');
       const debug = await StorageService.getSetting('debugMode');
+      const savedTheme = await StorageService.getSetting('theme');
 
       setAutoDownloadImages(autoDownload !== false);
       setDebugMode(debug === true);
+      setTheme(savedTheme === 'dark' ? 'dark' : 'light');
+
+      document.documentElement.setAttribute('data-theme', savedTheme === 'dark' ? 'dark' : 'light');
     } catch (error) {
       console.error('Failed to load settings:', error);
     }
@@ -136,6 +141,13 @@ export default function SettingsPage() {
     showMessage('Settings saved', 'info');
   };
 
+  const handleThemeChange = async (nextTheme: 'light' | 'dark') => {
+    setTheme(nextTheme);
+    await StorageService.setSetting('theme', nextTheme);
+    document.documentElement.setAttribute('data-theme', nextTheme);
+    showMessage('Theme updated', 'info');
+  };
+
   const showMessage = (msg: string, type: 'success' | 'error' | 'info') => {
     setMessage(msg);
     setMessageType(type);
@@ -232,6 +244,25 @@ export default function SettingsPage() {
               checked={autoDownloadImages}
               onChange={(e) => handleAutoDownloadChange(e.target.checked)}
             />
+          </div>
+        </section>
+
+        <section className="settings-section">
+          <h2>Appearance</h2>
+
+          <div className="setting-item">
+            <div className="setting-label">
+              <label htmlFor="theme">Theme</label>
+              <p>Apply to popup and in-page preview editor</p>
+            </div>
+            <select
+              id="theme"
+              value={theme}
+              onChange={(e) => handleThemeChange(e.target.value as 'light' | 'dark')}
+            >
+              <option value="light">Light</option>
+              <option value="dark">Dark</option>
+            </select>
           </div>
         </section>
 
