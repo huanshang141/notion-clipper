@@ -26,6 +26,7 @@ interface AppState {
 }
 
 export default function App() {
+  const [theme, setTheme] = useState<'light' | 'dark'>('light');
   const [state, setState] = useState<AppState>({
     isCheckingAuth: true,
     isAuthenticated: false,
@@ -94,13 +95,42 @@ export default function App() {
     }
   };
 
-  const applyTheme = async () => {
+  const resolveTheme = (savedTheme: unknown): 'light' | 'dark' => {
+    if (savedTheme === 'dark' || savedTheme === 'light') {
+      return savedTheme;
+    }
+
+    return window.matchMedia && window.matchMedia('(prefers-color-scheme: dark)').matches
+      ? 'dark'
+      : 'light';
+  };
+
+  const applyTheme = async (): Promise<'light' | 'dark'> => {
     try {
       const savedTheme = await StorageService.getSetting('theme');
-      const theme = savedTheme === 'dark' ? 'dark' : 'light';
-      document.documentElement.setAttribute('data-theme', theme);
+      const resolvedTheme = resolveTheme(savedTheme);
+      document.documentElement.setAttribute('data-theme', resolvedTheme);
+      setTheme(resolvedTheme);
+      return resolvedTheme;
     } catch {
-      document.documentElement.setAttribute('data-theme', 'light');
+      const fallbackTheme = resolveTheme(undefined);
+      document.documentElement.setAttribute('data-theme', fallbackTheme);
+      setTheme(fallbackTheme);
+      return fallbackTheme;
+    }
+  };
+
+  const handleToggleTheme = async () => {
+    const nextTheme = theme === 'dark' ? 'light' : 'dark';
+    setTheme(nextTheme);
+    document.documentElement.setAttribute('data-theme', nextTheme);
+
+    try {
+      await StorageService.setSetting('theme', nextTheme);
+    } catch {
+      const restoredTheme = theme;
+      setTheme(restoredTheme);
+      document.documentElement.setAttribute('data-theme', restoredTheme);
     }
   };
 
@@ -329,9 +359,19 @@ export default function App() {
     <div className="popup-container">
       <div className="popup-header">
         <h2>Save to Notion</h2>
-        <button className="logout-btn" onClick={handleLogout} title="Logout">
-          ⊗
-        </button>
+        <div className="header-actions">
+          <button
+            className="theme-toggle-btn"
+            onClick={() => void handleToggleTheme()}
+            title={theme === 'dark' ? 'Switch to light theme' : 'Switch to dark theme'}
+            aria-label={theme === 'dark' ? 'Switch to light theme' : 'Switch to dark theme'}
+          >
+            {theme === 'dark' ? '☀️' : '🌙'}
+          </button>
+          <button className="logout-btn" onClick={handleLogout} title="Logout">
+            ⊗
+          </button>
+        </div>
       </div>
 
       {state.message && (
