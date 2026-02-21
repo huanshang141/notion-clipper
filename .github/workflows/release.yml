@@ -59,17 +59,11 @@ jobs:
       - name: Build extension
         run: npm run build
 
-      - name: Package extension
-        run: |
-          cd dist
-          zip -r ../notion-clipper-${{ needs.meta.outputs.tag }}.zip .
-          cd ..
-
       - name: Upload artifact
         uses: actions/upload-artifact@v4
         with:
-          name: notion-clipper-${{ needs.meta.outputs.tag }}.zip
-          path: notion-clipper-${{ needs.meta.outputs.tag }}.zip
+          name: notion-clipper-${{ needs.meta.outputs.tag }}
+          path: dist/
           if-no-files-found: error
           retention-days: 30
 
@@ -106,13 +100,19 @@ jobs:
     steps:
       - uses: actions/download-artifact@v4
         with:
-          name: notion-clipper-${{ needs.meta.outputs.tag }}.zip
-          path: assets
+          name: notion-clipper-${{ needs.meta.outputs.tag }}
+          path: dist
+
+      - name: Create Release zip
+        run: |
+          cd dist
+          zip -r ../notion-clipper-${{ needs.meta.outputs.tag }}.zip .
+          cd ..
 
       - name: Create Release
         uses: softprops/action-gh-release@v2
         with:
-          files: assets/notion-clipper-${{ needs.meta.outputs.tag }}.zip
+          files: notion-clipper-${{ needs.meta.outputs.tag }}.zip
           tag_name: ${{ needs.meta.outputs.tag }}
           body: ${{ needs.changelog.outputs.release_body }}
           draft: false
