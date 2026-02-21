@@ -2,6 +2,7 @@ import { Readability } from '@mozilla/readability';
 import TurndownService from 'turndown';
 import { marked } from 'marked';
 import { MESSAGE_ACTIONS } from '../utils/constants';
+import { sendToBackground } from '../utils/ipc';
 import StorageService from '../services/storage';
 
 console.log('[NotionClipper] Content script loaded');
@@ -403,7 +404,7 @@ async function saveInlineEditorDraft() {
     return;
   }
 
-  const response = await chrome.runtime.sendMessage({
+  const response = await sendToBackground({
     action: MESSAGE_ACTIONS.UPDATE_EDITOR_DRAFT_BY_URL,
     data: {
       url: inlineEditorArticle!.url,
@@ -458,7 +459,7 @@ async function saveInlineEditorToNotion() {
       inlineEditorStatus.textContent = '正在保存到 Notion...';
     }
 
-    const fieldMappingResponse = await chrome.runtime.sendMessage({
+    const fieldMappingResponse = await sendToBackground({
       action: MESSAGE_ACTIONS.GET_AUTO_FIELD_MAPPING,
       data: {
         databaseId: inlineEditorSelectedDatabaseId,
@@ -469,7 +470,7 @@ async function saveInlineEditorToNotion() {
       throw new Error(fieldMappingResponse.error);
     }
 
-    const saveResponse = await chrome.runtime.sendMessage({
+    const saveResponse = await sendToBackground({
       action: MESSAGE_ACTIONS.SAVE_TO_NOTION,
       data: {
         article: editorContent,
@@ -483,7 +484,7 @@ async function saveInlineEditorToNotion() {
       throw new Error(saveResponse?.error || '保存到 Notion 失败');
     }
 
-    await chrome.runtime.sendMessage({
+    await sendToBackground({
       action: MESSAGE_ACTIONS.UPDATE_EDITOR_DRAFT_BY_URL,
       data: {
         url: inlineEditorArticle!.url,
